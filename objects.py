@@ -1,181 +1,258 @@
-# objects for app
-from PyQt6.QtWidgets import QPushButton, QCheckBox, QLabel, QComboBox, QScrollArea, QLineEdit, QListWidget
-from PyQt6.QtGui import QPixmap, QIcon, QFont
-from PyQt6.QtCore import Qt, QSize
+# objects.py
 
-class Button(QPushButton):
-    def __init___(self, width, height, img_path = None, text = None):
-        super().__init__()
-        self.setFixedSize(width, height)
-        if img_path is not None:
-            self.setIcon(QIcon(img_path))
-            self.setIconSize(QSize(width-30, height-30))
-        if text is not None:
-            if height >= 100:
-                font_size = 30
-            elif height >= 80:
-                font_size = 24
-            elif height >= 60:
-                font_size = 18
-            elif height >= 40:
-                font_size = 14
-            else:
-                font_size = 10
-            self.font = QFont("Segoe UI", font_size, 700)
-            self.setText(text)
-            self.setFont(self.font) 
+from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtWidgets import QPushButton, QLabel, QGraphicsDropShadowEffect, QFrame, QTableWidget, QDialog, QVBoxLayout
 
-        self.setStyleSheet("""
-                QPushButton {
-                    border-radius: 25px;  /* Round edges */
-                    border: 2px solid #b3ebde; /* Blue border */
-                    background-color: #b3ebde; /* Light blue background */
-                    color: black; /* White text */
-                }
-                QPushButton:hover {
-                    background-color: #3399FF; /* Darker blue on hover */
-                }
-                QPushButton:pressed {
-                    background-color: #0056b3; /* Even darker on click */
-                }
-            """)
+# 🎨 Colour palette (from your scheme)
+COLOR_PRIMARY_DARK = "#031716"  # Almost black, good for text or headers
+COLOR_DARK_GREEN   = "#032F30"
+COLOR_TEAL         = "#0A7075"
+COLOR_MINT         = "#0C969C"
+COLOR_LIGHT_BLUE   = "#6BA3BE"
+COLOR_SLATE        = "#274D60"
 
-class ToggleSwitch(QCheckBox):
-    def __init__(self, text = None):
-        super().__init__()
-        self.setTristate(False)
-        self.setStyleSheet("""
-            QCheckBox::indicator {
-                width: 40px;
-                height: 20px;
-            }
-            QCheckBox::indicator:unchecked {
-                border-radius: 10px;
-                background-color: lightgrey;
-            }
-            QCheckBox::indicator:checked {
-                border-radius: 10px;
-                background-color: #4CAF50;
-            }
-        """)
-        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        if text is not None:
-            self.setText(text)
-            font = QFont("Segoe UI", 14, 400) 
-            self.setFont(font)     
+# 🎨 Assigning roles
+BACKGROUND_COLOR   = COLOR_DARK_GREEN
+PRIMARY_COLOR      = COLOR_TEAL
+SECONDARY_COLOR    = COLOR_MINT
+ACCENT_COLOR       = COLOR_LIGHT_BLUE
+TEXT_COLOR         = "#FFFFFF"  # White text for contrast
 
-class Label(QLabel):
-    def __init__(self, text = None, font_size = None):
-        super().__init__()
-        if text is not None and font_size is not None:
-            font = QFont("Segoe UI", font_size, 700)
-            self.setText(text)
-            self.setFont(font)
+# 📝 Fonts
+HEADER_FONT = QFont("Arial", 14, QFont.Weight.Bold)
+BODY_FONT   = QFont("Arial", 11)
+SMALL_FONT  = QFont("Arial", 9)
 
-class ScrollArea(QScrollArea):
-    def __init__(self):
-        super().__init__()
-        self.setStyleSheet("""
-            QScrollBar:vertical {
-                border: none;
-                background: #cbe7e2;
-                width: 12px;
-                margin: 0px 0px 0px 0px;
-                border-radius: 6px;
-            }
+def apply_card_shadow(widget):
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(25)   # softness
+        shadow.setXOffset(0)       # horizontal offset
+        shadow.setYOffset(5)       # vertical offset
+        shadow.setColor(QColor(0, 0, 0, 150))  # RGBA (black with transparency)
+        widget.setGraphicsEffect(shadow)
 
-            QScrollBar::handle:vertical {
-                background: #3399FF;
-                min-height: 20px;
-                border-radius: 6px;
-            }
-
-            QScrollBar::handle:vertical:hover {
-                background: #0056b3;
-            }
-
-            QScrollBar::add-line:vertical,
-            QScrollBar::sub-line:vertical {
-                height: 0px;
-                subcontrol-origin: margin;
-            }
-
-            QScrollBar::add-page:vertical,
-            QScrollBar::sub-page:vertical {
-                background: none;
-            }
-
-            QScrollBar:horizontal {
-                border: none;
-                background: #cbe7e2;
-                height: 12px;
-                margin: 0px 0px 0px 0px;
-                border-radius: 6px;
-            }
-
-            QScrollBar::handle:horizontal {
-                background: #3399FF;
-                min-width: 20px;
-                border-radius: 6px;
-            }
-
-            QScrollBar::handle:horizontal:hover {
-                background: #0056b3;
-            }
-
-            QScrollBar::add-line:horizontal,
-            QScrollBar::sub-line:horizontal {
-                width: 0px;
-                subcontrol-origin: margin;
-            }
-
-            QScrollBar::add-page:horizontal,
-            QScrollBar::sub-page:horizontal {
-                background: none;
-            }
-            """)
-        
-class LineEdit(QLineEdit):
-    def __init__(self, size = None):
-        super().__init__()
-        if size is not None:
-            self.setFixedWidth(size)
-        self.setStyleSheet("""
-            QLineEdit {
-                border: 2px solid #b0b0b0;
-                border-radius: 10px;
-                padding: 5px 10px;
-                background-color: #dcdcdc;
-                color: black;
-                selection-background-color: #a0a0a0;
-            }
-        """)
-        font = QFont("Segoe UI", 14, 400) 
-        self.setFont(font)
-
-class ListWidget(QListWidget):
-    def __init__(self):
-        super().__init__()
-        self.setStyleSheet("""
-            QListWidget {
-                border: 2px solid #b0b0b0;
-                border-radius: 10px;
-                background-color: #dcdcdc;
-                color: black;
-                padding: 5px;
-            }
-
-            QListWidget::item {
-                padding: 5px 10px;
-                border-radius: 5px;
-            }
-
-            QListWidget::item:selected {
-                background-color: #a0a0a0;
+# 🔘 Styled reusable button
+class StyledButton(QPushButton):
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setFont(BODY_FONT)
+        self.setStyleSheet(f"""
+           QPushButton {{
+                background-color: {COLOR_TEAL};
                 color: white;
-            }
+                font-size: 18px;
+                font-weight: bold;
+                padding: 12px 20px;
+                border-radius: 10px;
+                text-align: left;
+                qproperty-iconSize: 28px;
+            }}
+            QPushButton:hover {{
+                background-color: {COLOR_MINT};
+            }}
+            QPushButton:pressed {{
+                background-color: {COLOR_SLATE};
+            }}
         """)
-        font = QFont("Segoe UI", 14, 400) 
-        self.setFont(font)
+
+# 🔖 Styled reusable label
+class HeaderLabel(QLabel):
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setFont(HEADER_FONT)
+        self.setStyleSheet(f"""
+            color: {COLOR_LIGHT_BLUE};
+            font-size: 28px;
+            font-weight: bold;
+            padding: 20px;
+        """)
+
+class Card(QFrame):
+    def __init__(self, parent = None):
+        super().__init__(parent)
+        self.setStyleSheet(f"""
+            QFrame {{
+                background-color: rgba(255, 255, 255, 0.9);
+                border: 2px solid {COLOR_SLATE};
+                border-radius: 15px;
+                padding: 30px;
+            }}
+        """)
+        apply_card_shadow(self)
 
 
+
+class Table(QTableWidget):
+    def __init__(self, parent = None):
+        super().__init__(parent)
+        self.setAlternatingRowColors(True)
+        self.setStyleSheet(f"""
+            QTableWidget {{
+                background-color: {COLOR_PRIMARY_DARK};
+                alternate-background-color: {COLOR_DARK_GREEN};
+                gridline-color: {COLOR_TEAL};
+                color: white;
+                border: none;
+                font-size: 14px;
+                selection-background-color: {COLOR_MINT};
+                selection-color: white;
+            }}
+            QHeaderView::section {{
+                background-color: {COLOR_SLATE};
+                color: white;
+                font-weight: bold;
+                border: none;
+                padding: 6px;
+            }}
+            QTableWidget::item {{
+                padding: 6px;
+            }}
+        """)
+        self.horizontalHeader().setStretchLastSection(True)
+        self.verticalHeader().setVisible(False)
+        self.setShowGrid(False)
+
+class FloatingButton(QPushButton):
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setFixedSize(60, 60)
+        self.setStyleSheet(f"""
+            QPushButton {{
+                border-radius: 30px;
+                background-color: {COLOR_TEAL};
+                color: white;
+                font-size: 26px;
+                font-weight: bold;
+                padding: 10px;
+            }}
+            QPushButton:hover {{
+                background-color: {COLOR_MINT};
+            }}
+        """)
+
+        apply_card_shadow(self)
+
+class ButtonFrame(QFrame):
+    def __init__(self, parent = None):
+        super().__init__(parent)
+        self.setStyleSheet(f"""
+            QFrame {{
+                background-color: {COLOR_DARK_GREEN};
+                border-radius: 8px;
+                padding: 8px;
+            }}
+        """)
+
+class TableStyledButton(QPushButton):
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setFont(BODY_FONT)
+        self.setStyleSheet(f"""
+           QPushButton {{
+                background-color: {COLOR_TEAL};
+                color: white;
+                font-size: 12px;
+                font-weight: bold;
+                padding: 4px 8px;;
+                border-radius: 20px;
+                text-align: center;
+            }}
+            QPushButton:hover {{
+                background-color: {COLOR_MINT};
+            }}
+            QPushButton:pressed {{
+                background-color: {COLOR_SLATE};
+            }}
+        """)
+
+class StyledDialog(QDialog):
+    """
+    A reusable QDialog with consistent HR app styling.
+    Applies styles to all child widgets: QLabel, QLineEdit, QComboBox, QPushButton.
+    """
+    def __init__(self, parent=None, title="Dialog"):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+
+        # Main layout
+        self.main_layout = QVBoxLayout()
+        self.setLayout(self.main_layout)
+
+        # Apply stylesheet to all common widgets in this dialog
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: rgba(3, 47, 48, 0.95);  /* dark greenish */
+                border-radius: 12px;
+            }}
+            QLabel {{
+                color: white;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QLineEdit, QTextEdit {{
+                background-color: {COLOR_DARK_GREEN};
+                color: white;
+                border: 1px solid {COLOR_TEAL};
+                border-radius: 6px;
+                padding: 6px;
+            }}
+            QLineEdit:focus, QTextEdit:focus {{
+                border: 1px solid {COLOR_MINT};
+            }}
+            QComboBox {{
+                background-color: {COLOR_DARK_GREEN};
+                color: white;
+                border: 1px solid {COLOR_TEAL};
+                border-radius: 6px;
+                padding: 6px;
+            }}
+            QComboBox:focus {{
+                border: 1px solid {COLOR_MINT};
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {COLOR_DARK_GREEN};
+                color: white;
+                selection-background-color: {COLOR_TEAL};
+                selection-color: white;
+                border: 1px solid {COLOR_TEAL};
+            }}
+            QPushButton {{
+                background-color: {COLOR_TEAL};
+                color: white;
+                font-weight: bold;
+                padding: 8px 16px;
+                border-radius: 8px;
+            }}
+            QPushButton:hover {{
+                background-color: {COLOR_MINT};
+            }}
+            QPushButton:pressed {{
+                background-color: {COLOR_SLATE};
+            }}
+            QFormLayout {{
+                spacing: 10px;
+                margin: 15px;
+            }}
+            QCheckBox {{
+                color: white;
+                font-size: 13px;
+                spacing: 5px;
+            }}
+            QCheckBox::indicator {{
+                width: 18px;
+                height: 18px;
+                border-radius: 4px;
+                border: 1px solid {COLOR_TEAL};
+                background-color: {COLOR_DARK_GREEN};
+            }}
+            QCheckBox::indicator:checked {{
+                background-color: {COLOR_TEAL};
+                border: 1px solid {COLOR_MINT};
+            }}
+            QCheckBox::indicator:unchecked:hover {{
+                border: 1px solid {COLOR_MINT};
+            }}
+        """)
+
+        # Optional: shadow for depth
+        apply_card_shadow(self)

@@ -1,18 +1,27 @@
 import sqlite3
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton,
-    QTableWidget, QTableWidgetItem, QHBoxLayout, QLineEdit, QLabel, QMessageBox, QDialog, QFormLayout,
-    QScrollArea, QDialogButtonBox, QComboBox, QToolButton, QMenu, QInputDialog, QHeaderView, QFileDialog
+    QTableWidget, QTableWidgetItem, QMessageBox, QScrollArea, QToolButton, QMenu, QInputDialog, QFileDialog
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QIcon
 import pandas as pd
 from datetime import datetime
+import objects
 
 class EmployeeTrainingPages(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Employee Training Records")
+        self.setStyleSheet(f"""
+            QWidget {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:1,
+                    stop:0 {objects.COLOR_DARK_GREEN}, stop:0.5 {objects.COLOR_TEAL}, stop:1 {objects.COLOR_MINT}
+                );
+                font-family: Segoe UI, Arial, sans-serif;
+            }}
+        """)
 
         # Database setup
         self.conn = sqlite3.connect("hr_app.db")
@@ -28,29 +37,17 @@ class EmployeeTrainingPages(QWidget):
         self.scroll_layout = QVBoxLayout(scroll_content)
 
         # Table widget
-        self.table = QTableWidget()
+        self.table = objects.Table()
         self.scroll_layout.addWidget(self.table)
 
         scroll_area.setWidget(scroll_content)
         self.main_layout.addWidget(scroll_area)
 
-        self.export_btn = QPushButton()
-        self.export_btn.setIcon(QIcon.fromTheme("document-save"))  # system icon fallback
-        self.export_btn.setFixedSize(50, 50)
-        self.export_btn.setStyleSheet("""
-            QPushButton {
-                border-radius: 25px;
-                background-color: #0078d7;
-                color: white;
-                font-size: 18px;
-            }
-            QPushButton:hover {
-                background-color: #005a9e;
-            }
-        """)
+        self.export_btn = objects.FloatingButton("")
+        self.export_btn.setIcon(QIcon("icons/download.png"))  # system icon fallback
+        self.export_btn.setIconSize(QSize(32, 32))
         self.export_btn.clicked.connect(self.export_training_employees_to_excel)
         self.main_layout.addWidget(self.export_btn, alignment=Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignRight)
-
         self.setLayout(self.main_layout)
 
     def show_training_employees(self, training_id, training_name):
@@ -87,7 +84,7 @@ class EmployeeTrainingPages(QWidget):
             self.table.setItem(i, 4, QTableWidgetItem("Completed" if status == 1 else "Pending"))
 
             # Add action button
-            btn = QPushButton("Toggle")
+            btn = objects.TableStyledButton("Toggle")
             btn.clicked.connect(lambda checked, emp_db_id=db_id, row_index=i: self.toggle_training_status(emp_db_id, row_index))
             self.table.setCellWidget(i, 5, btn)
 

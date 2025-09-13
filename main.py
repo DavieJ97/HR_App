@@ -1,50 +1,97 @@
 # Main page with buttons.
 import sys
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QPushButton, QLabel
+    QApplication, QWidget, QVBoxLayout, QFrame, QHBoxLayout
 )
-from PyQt6.QtCore import Qt
-from emplyee import EmployeePage
+from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import Qt, QSize
+from employee import EmployeePage
 from training import TrainingPage
 from additionalInfo import InfoPage
+import objects
 
 
 class HRApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("App Page Example")
-        self.setGeometry(100, 100, 400, 300)
+        self.setWindowTitle("HR Training App")
+        self.setGeometry(100, 100, 300, 300)  # Bigger, dashboard feel
+
+        self.setStyleSheet(f"""
+            QWidget {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:1,
+                    stop:0 {objects.COLOR_DARK_GREEN}, stop:0.5 {objects.COLOR_TEAL}, stop:1 {objects.COLOR_MINT}
+                );
+                font-family: Segoe UI, Arial, sans-serif;
+            }}
+        """)
 
         # Main layout
-        layout = QVBoxLayout()
+        outer_layout = QVBoxLayout()
+        outer_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Header label
-        header = QLabel("Header")
+        header = objects.HeaderLabel("Header")
         header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header.setStyleSheet("font-size: 18px; font-weight: bold;")
-        layout.addWidget(header)
+        outer_layout.addWidget(header)
+
+        card = objects.Card()
+        card_layout = QVBoxLayout()
+        card_layout.setSpacing(10)
 
         # Buttons
-        btn_employee = QPushButton("Employee")
-        btn_training = QPushButton("Training")
-        btn_info = QPushButton("Info")
+        btn_employee = objects.StyledButton("Employee")
+        btn_employee.setIcon(QIcon("icons/employee.png"))   # 👤 user icon
+        btn_employee.setIconSize(QSize(32, 32))
+                                 
+        btn_training = objects.StyledButton("Training")
+        btn_training.setIcon(QIcon("icons/training.png"))   # 🎓 training cap
+        btn_training.setIconSize(QSize(32, 32))
+
+        btn_info = objects.StyledButton("Info")
+        btn_info.setIcon(QIcon("icons/info.png"))           # ℹ️ info circle
+        btn_info.setIconSize(QSize(32, 32))
 
         # Optional styling for buttons
-        button_style = "font-size: 16px; padding: 10px;"
-        btn_employee.setStyleSheet(button_style)
+        button_style = """
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                font-size: 18px;
+                padding: 12px;
+                border-radius: 10px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """
+        # btn_employee.setStyleSheet(button_style)
         btn_employee.clicked.connect(self.openEmployees)
-        btn_training.setStyleSheet(button_style)
+        # btn_training.setStyleSheet(button_style)
         btn_training.clicked.connect(self.openTrainings)
-        btn_info.setStyleSheet(button_style)
+        # btn_info.setStyleSheet(button_style)
         btn_info.clicked.connect(self.openInfo)
 
-        # Add buttons to layout
-        layout.addWidget(btn_employee)
-        layout.addWidget(btn_training)
-        layout.addWidget(btn_info)
+        # for btn in (btn_employee, btn_training, btn_info):
+        #     btn.setStyleSheet(button_style)
+
+        # Add to card
+        card_layout.addWidget(btn_employee)
+        card_layout.addWidget(btn_training)
+        card_layout.addWidget(btn_info)
+        card.setLayout(card_layout)
+
+         # === CENTER ALIGN CARD ===
+        center_layout = QHBoxLayout()
+        center_layout.addStretch()
+        center_layout.addWidget(card, alignment=Qt.AlignmentFlag.AlignCenter)
+        center_layout.addStretch()
+
+        outer_layout.addLayout(center_layout)
 
         # Apply layout
-        self.setLayout(layout)
+        self.setLayout(outer_layout)
 
     def openEmployees(self):
         self.subpageemployee = EmployeePage()
@@ -65,6 +112,5 @@ class HRApp(QWidget):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = HRApp()
-    window.showMaximized()
     window.show()
     sys.exit(app.exec())

@@ -4,15 +4,26 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHBoxLayout, QLineEdit, QLabel, QMessageBox, QDialog, QFormLayout,
     QScrollArea, QDialogButtonBox, QTextEdit, QCheckBox, QFileDialog
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import Qt, QSize
 from employee_trainings import EmployeeTrainingPages
 import pandas as pd
 from datetime import datetime
+import objects
 
 class TrainingPage(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("HR Training Tracker")
+        self.setStyleSheet(f"""
+            QWidget {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:1,
+                    stop:0 {objects.COLOR_DARK_GREEN}, stop:0.5 {objects.COLOR_TEAL}, stop:1 {objects.COLOR_MINT}
+                );
+                font-family: Segoe UI, Arial, sans-serif;
+            }}
+        """)
 
         # Database setup
         self.conn = sqlite3.connect("hr_app.db")
@@ -21,6 +32,29 @@ class TrainingPage(QWidget):
         # Layout
         self.main_layout = QVBoxLayout()
 
+        btn_frame = objects.ButtonFrame()
+
+        # Buttons
+        btn_layout = QHBoxLayout(btn_frame)
+        btn_layout.setSpacing(15)
+        self.btn_trainings = objects.StyledButton("Refresh Trainings")
+        self.btn_trainings.setIcon(QIcon("icons/refresh.png"))
+        self.btn_trainings.setIconSize(QSize(32, 32))
+        self.btn_trainings.clicked.connect(self.show_trainings)
+        btn_layout.addWidget(self.btn_trainings)
+
+        self.import_trainings = objects.StyledButton("Upload Trainings")
+        self.import_trainings.setIcon(QIcon("icons/upload.png"))
+        self.import_trainings.setIconSize(QSize(32, 32))
+        self.import_trainings.clicked.connect(self.import_trainings_from_excel)
+        btn_layout.addWidget(self.import_trainings)
+
+        self.export_trainings = objects.StyledButton("Download Trainings")
+        self.export_trainings.setIcon(QIcon("icons/download.png"))
+        self.export_trainings.setIconSize(QSize(32, 32))
+        self.export_trainings.clicked.connect(self.export_trainings_to_excel)
+        btn_layout.addWidget(self.export_trainings)
+
         # === Scroll Area ===
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -28,44 +62,19 @@ class TrainingPage(QWidget):
         scroll_content = QWidget()
         self.scroll_layout = QVBoxLayout(scroll_content)
 
-        # Buttons
-        btn_layout = QHBoxLayout()
-        self.btn_trainings = QPushButton("Refresh Trainings")
-        self.btn_trainings.clicked.connect(self.show_trainings)
-        btn_layout.addWidget(self.btn_trainings)
-
-        self.import_trainings = QPushButton("Import Trainings")
-        self.import_trainings.clicked.connect(self.import_trainings_from_excel)
-        btn_layout.addWidget(self.import_trainings)
-
-        self.export_trainings = QPushButton("Export Trainings")
-        self.export_trainings.clicked.connect(self.export_trainings_to_excel)
-        btn_layout.addWidget(self.export_trainings)
-
-        self.scroll_layout.addLayout(btn_layout)
+        self.scroll_layout.addWidget(btn_frame)
 
         # Table widget
-        self.table = QTableWidget()
+        self.table = objects.Table()
         self.scroll_layout.addWidget(self.table)
 
         scroll_area.setWidget(scroll_content)
         self.main_layout.addWidget(scroll_area)
 
        # Floating Add Button
-        self.btn_add = QPushButton("+")
-        self.btn_add.setFixedSize(60, 60)
-        self.btn_add.setStyleSheet("""
-            QPushButton {
-                border-radius: 30px;
-                background-color: #0078d7;
-                color: white;
-                font-size: 24px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #005a9e;
-            }
-        """)
+        self.btn_add = objects.FloatingButton("")
+        self.btn_add.setIcon(QIcon("icons/new.png"))
+        self.btn_add.setIconSize(QSize(32, 32))
         self.btn_add.clicked.connect(self.add_item_placeholder)  # empty for now
 
         # Add button stays bottom-right
@@ -114,10 +123,10 @@ class TrainingPage(QWidget):
                 self.table.setItem(i, j, QTableWidgetItem(str(val)))
 
             # Add "..." button in second last column and view to the last
-            detail_btn = QPushButton("...")
+            detail_btn = objects.TableStyledButton("...")
             detail_btn.clicked.connect(lambda checked, training_id=row[0]: self.show_training_details(training_id))
             self.table.setCellWidget(i, 4, detail_btn)
-            emp_btn = QPushButton("View")
+            emp_btn = objects.TableStyledButton("View")
             emp_btn.clicked.connect(lambda checked, training_id=row[0], training_name=row[1]: self.openEmployeeTrainings(training_id, training_name))
             self.table.setCellWidget(i, 5, emp_btn)
 
@@ -129,12 +138,11 @@ class TrainingPage(QWidget):
         training = cursor.fetchone()
 
         if training:
-            dialog = QDialog(self)
-            dialog.setWindowTitle("Training Details")
-            layout = QVBoxLayout()
+            dialog = objects.StyledDialog(self, "Training Details")
 
             # Fields
             form_layout = QFormLayout()
+            dialog.main_layout.addLayout(form_layout)
             form_layout.addRow("ID:", QLabel(str(training[0])))
             form_layout.addRow("Name:", QLabel(training[1]))
 
@@ -164,7 +172,6 @@ class TrainingPage(QWidget):
             form_layout.addRow("Departments:", self.dept_label)
             form_layout.addRow("", self.dept_box)
 
-            layout.addLayout(form_layout)
 
             # Buttons
             btn_layout = QHBoxLayout()
@@ -175,9 +182,7 @@ class TrainingPage(QWidget):
             btn_layout.addWidget(self.btn_edit)
             btn_layout.addWidget(self.btn_delete)
             btn_layout.addWidget(self.btn_cancel)
-            layout.addLayout(btn_layout)
-
-            dialog.setLayout(layout)
+            dialog.main_layout.addLayout(btn_layout)
 
             # === Button Actions ===
             def toggle_edit():
@@ -224,10 +229,10 @@ class TrainingPage(QWidget):
     
     def add_item_placeholder(self):
         """Open dialog to add a new training and save it to the database."""
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Add Training")
+        dialog = objects.StyledDialog(self, "Add Training")
 
-        layout = QFormLayout(dialog)
+        layout = QFormLayout()
+        dialog.main_layout.addLayout(layout)
 
         # Input fields
         name_input = QLineEdit()
@@ -248,7 +253,7 @@ class TrainingPage(QWidget):
         layout.addRow("Description:", desc_input)
         layout.addRow("Departments:", dept_box)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        layout.addWidget(buttons)
+        dialog.main_layout.addWidget(buttons)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
 

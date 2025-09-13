@@ -1,17 +1,27 @@
 import sqlite3
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QPushButton,
-    QTableWidget, QTableWidgetItem, QHBoxLayout, QLineEdit, QLabel, QMessageBox, QDialog, QFormLayout,
+    QWidget, QVBoxLayout, QPushButton, QTableWidgetItem, QHBoxLayout, QLineEdit, QLabel, QMessageBox, QDialog, QFormLayout,
     QScrollArea, QDialogButtonBox, QComboBox, QToolButton, QMenu, QInputDialog, QFileDialog
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import Qt, QSize
 import pandas as pd
 from datetime import datetime
+import objects
 
 class EmployeePage(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("HR Training Tracker")
+        self.setStyleSheet(f"""
+            QWidget {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:1,
+                    stop:0 {objects.COLOR_DARK_GREEN}, stop:0.5 {objects.COLOR_TEAL}, stop:1 {objects.COLOR_MINT}
+                );
+                font-family: Segoe UI, Arial, sans-serif;
+            }}
+        """)
 
         # Database setup
         self.conn = sqlite3.connect("hr_app.db")
@@ -20,6 +30,29 @@ class EmployeePage(QWidget):
         # Layout
         self.main_layout = QVBoxLayout()
 
+        btn_frame = objects.ButtonFrame()
+
+        # Buttons
+        btn_layout = QHBoxLayout(btn_frame)
+        btn_layout.setSpacing(15)
+        self.btn_employees = objects.StyledButton("Refresh Employees")
+        self.btn_employees.setIcon(QIcon("icons/refresh.png"))
+        self.btn_employees.setIconSize(QSize(32, 32))
+        self.btn_employees.clicked.connect(self.show_employees)
+        btn_layout.addWidget(self.btn_employees)
+
+        self.import_btn = objects.StyledButton("Upload Employees")
+        self.import_btn.setIcon(QIcon("icons/upload.png"))
+        self.import_btn.setIconSize(QSize(32, 32))
+        self.import_btn.clicked.connect(self.import_employees_from_excel)
+        btn_layout.addWidget(self.import_btn)
+
+        self.export_btn = objects.StyledButton("Download Employees")
+        self.export_btn.setIcon(QIcon("icons/download.png"))
+        self.export_btn.setIconSize(QSize(32, 32))
+        self.export_btn.clicked.connect(self.export_employees_to_excel)
+        btn_layout.addWidget(self.export_btn)
+
         # === Scroll Area ===
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -27,45 +60,20 @@ class EmployeePage(QWidget):
         scroll_content = QWidget()
         self.scroll_layout = QVBoxLayout(scroll_content)
 
-        # Buttons
-        btn_layout = QHBoxLayout()
-        self.btn_employees = QPushButton("Refresh Employees")
-        self.btn_employees.clicked.connect(self.show_employees)
-        btn_layout.addWidget(self.btn_employees)
 
-        self.import_btn = QPushButton("Import Employees")
-        self.import_btn.clicked.connect(self.import_employees_from_excel)
-        btn_layout.addWidget(self.import_btn)
-
-        self.export_btn = QPushButton("Export Employees")
-        self.export_btn.clicked.connect(self.export_employees_to_excel)
-        btn_layout.addWidget(self.export_btn)
-
-
-        self.scroll_layout.addLayout(btn_layout)
+        self.scroll_layout.addWidget(btn_frame)
 
         # Table widget
-        self.table = QTableWidget()
+        self.table = objects.Table()
         self.scroll_layout.addWidget(self.table)
 
         scroll_area.setWidget(scroll_content)
         self.main_layout.addWidget(scroll_area)
 
        # Floating Add Button
-        self.btn_add = QPushButton("+")
-        self.btn_add.setFixedSize(60, 60)
-        self.btn_add.setStyleSheet("""
-            QPushButton {
-                border-radius: 30px;
-                background-color: #0078d7;
-                color: white;
-                font-size: 24px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #005a9e;
-            }
-        """)
+        self.btn_add = objects.FloatingButton("")
+        self.btn_add.setIcon(QIcon("icons/user.png"))
+        self.btn_add.setIconSize(QSize(32, 32))
         self.btn_add.clicked.connect(self.add_item_placeholder)  # empty for now
 
         # Add button stays bottom-right
@@ -115,7 +123,7 @@ class EmployeePage(QWidget):
                 self.table.setItem(i, j, QTableWidgetItem(str(val)))
 
             # Add "..." button in last column
-            btn = QPushButton("...")
+            btn = objects.TableStyledButton("...")
             btn.clicked.connect(lambda checked, emp_id=row[0]: self.show_employee_details(emp_id))
             self.table.setCellWidget(i, 4, btn)
 
@@ -201,12 +209,11 @@ class EmployeePage(QWidget):
                     self.dept_edit.setCurrentIndex(index)
 
         if employee:
-            dialog = QDialog(self)
-            dialog.setWindowTitle("Employee Details")
-            layout = QVBoxLayout()
+            dialog = objects.StyledDialog(self, title="Employee Details")
 
             # Fields
             form_layout = QFormLayout()
+            dialog.main_layout.addLayout(form_layout)
             form_layout.addRow("ID:", QLabel(str(employee[0])))
 
             # Editable fields
@@ -229,8 +236,6 @@ class EmployeePage(QWidget):
             form_layout.addRow("Department:", self.dept_label)
             form_layout.addRow("", self.dept_edit)
 
-            layout.addLayout(form_layout)
-
             # Buttons
             btn_layout = QHBoxLayout()
             self.btn_edit = QPushButton("Edit")
@@ -240,9 +245,9 @@ class EmployeePage(QWidget):
             btn_layout.addWidget(self.btn_edit)
             btn_layout.addWidget(self.btn_delete)
             btn_layout.addWidget(self.btn_cancel)
-            layout.addLayout(btn_layout)
+            dialog.main_layout.addLayout(btn_layout)
 
-            dialog.setLayout(layout)
+            
 
             # === Button Actions ===
             def toggle_edit():
@@ -356,10 +361,10 @@ class EmployeePage(QWidget):
 
     def add_item_placeholder(self):
         """Open a dialog to add a new employee."""
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Add Employee")
+        dialog = objects.StyledDialog(self, "Add Employee")
 
-        layout = QFormLayout(dialog)
+        layout = QFormLayout()
+        dialog.main_layout.addLayout(layout)
 
         # Input fields
         name_input = QLineEdit()
@@ -380,7 +385,7 @@ class EmployeePage(QWidget):
 
         # Buttons
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        layout.addRow(buttons)
+        dialog.main_layout.addWidget(buttons)
 
         def save_employee():
             name = name_input.text().strip()

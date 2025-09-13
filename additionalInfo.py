@@ -4,55 +4,57 @@ from PyQt6.QtWidgets import (
     QScrollArea, QLineEdit, QFormLayout, QMessageBox, QDialog, QDialogButtonBox, QListWidget, QInputDialog
 )
 from PyQt6.QtCore import Qt
-
+import objects
 
 # Password dialog
-class PasswordDialog(QDialog):
+class PasswordDialog(objects.StyledDialog):
     def __init__(self, parent=None):
-        super().__init__(parent)
-        print('making dialog')
-        self.setWindowTitle("Enter Password")
+        super().__init__(parent, title="Enter Password")
 
+        # Password input
         self.input = QLineEdit()
         self.input.setEchoMode(QLineEdit.EchoMode.Password)
 
-        buttons = QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        self.buttonBox = QDialogButtonBox(buttons)
+        # Buttons
+        self.buttonBox = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.reject)
 
-        layout = QVBoxLayout()
-        layout.addWidget(QLabel("Please enter password:"))
-        layout.addWidget(self.input)
-        layout.addWidget(self.buttonBox)
-        self.setLayout(layout)
+        # Layout
+        self.main_layout.addWidget(QLabel("Please enter password:"))
+        self.main_layout.addWidget(self.input)
+        self.main_layout.addWidget(self.buttonBox)
 
     def getPassword(self):
         return self.input.text()
 
-class ChangePasswordDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Change Password")
 
+class ChangePasswordDialog(objects.StyledDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent, title="Change Password")
+
+        # Password fields
         self.newPass1 = QLineEdit()
         self.newPass1.setEchoMode(QLineEdit.EchoMode.Password)
 
         self.newPass2 = QLineEdit()
         self.newPass2.setEchoMode(QLineEdit.EchoMode.Password)
 
-        buttons = QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        self.buttonBox = QDialogButtonBox(buttons)
+        # Buttons
+        self.buttonBox = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.reject)
 
-        layout = QVBoxLayout()
-        layout.addWidget(QLabel("Enter New Password:"))
-        layout.addWidget(self.newPass1)
-        layout.addWidget(QLabel("Confirm New Password:"))
-        layout.addWidget(self.newPass2)
-        layout.addWidget(self.buttonBox)
-        self.setLayout(layout)
+        # Layout
+        self.main_layout.addWidget(QLabel("Enter New Password:"))
+        self.main_layout.addWidget(self.newPass1)
+        self.main_layout.addWidget(QLabel("Confirm New Password:"))
+        self.main_layout.addWidget(self.newPass2)
+        self.main_layout.addWidget(self.buttonBox)
 
     def getPasswords(self):
         return self.newPass1.text(), self.newPass2.text()
@@ -64,6 +66,43 @@ class InfoPage(QWidget):
         self.conn = sqlite3.connect("hr_app.db")
         self.cursor = self.conn.cursor()
         self.password = "admin123"  # fallback in case no password in DB
+        self.setStyleSheet(f"""
+            QWidget {{
+                background-color: rgba(3, 47, 48, 0.95);
+            }}
+            QLabel {{
+                color: white;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QLineEdit {{
+                background-color: {objects.COLOR_DARK_GREEN};
+                color: white;
+                border: 1px solid {objects.COLOR_TEAL};
+                border-radius: 6px;
+                padding: 6px;
+            }}
+            QLineEdit:read-only {{
+                background-color: rgba(3, 47, 48, 0.7);
+                color: #aaa;
+            }}
+            QPushButton {{
+                background-color: {objects.COLOR_TEAL};
+                color: white;
+                font-weight: bold;
+                padding: 8px 16px;
+                border-radius: 8px;
+            }}
+            QPushButton:hover {{
+                background-color: {objects.COLOR_MINT};
+            }}
+            QPushButton:pressed {{
+                background-color: {objects.COLOR_SLATE};
+            }}
+            QScrollArea {{
+                border: none;
+            }}
+        """)
         self.load_password_from_db()
         self.initUI()
 
@@ -192,6 +231,12 @@ class InfoPage(QWidget):
 
 
     def change_password(self):
+        pdialog = PasswordDialog()
+        if pdialog.exec():
+            entered = pdialog.getPassword()
+            if entered != self.password:
+                QMessageBox.warning(self, "Error", "Incorrect password")
+                return    
         dialog = ChangePasswordDialog(self)
         if dialog.exec():
             new_pass1, new_pass2 = dialog.getPasswords()
