@@ -1,5 +1,6 @@
 # Main page with buttons.
 import sys
+import sqlite3
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QFrame, QHBoxLayout
 )
@@ -11,11 +12,16 @@ from additionalInfo import InfoPage
 import objects
 
 
-class HRApp(QWidget):
+class HRApp(QWidget):  
     def __init__(self):
         super().__init__()
         self.setWindowTitle("HR Training App")
         self.setGeometry(100, 100, 300, 300)  # Bigger, dashboard feel
+
+        self.conn = sqlite3.connect("hr_app.db")
+        self.cursor = self.conn.cursor()
+        self.init_db()  # create tables here
+
 
         self.setStyleSheet(f"""
             QWidget {{
@@ -32,7 +38,7 @@ class HRApp(QWidget):
         outer_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Header label
-        header = objects.HeaderLabel("Header")
+        header = objects.HeaderLabel("Taining Aid App(Demo)")
         header.setAlignment(Qt.AlignmentFlag.AlignCenter)
         outer_layout.addWidget(header)
 
@@ -92,6 +98,32 @@ class HRApp(QWidget):
 
         # Apply layout
         self.setLayout(outer_layout)
+
+    def init_db(self):
+        """Create all required tables if they don't exist."""
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS company_info (
+                id INTEGER PRIMARY KEY,
+                name TEXT,
+                type TEXT
+            )
+        """)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS departments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE
+            )
+        """)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS employees (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id TEXT,
+                name TEXT,
+                job TEXT,
+                department TEXT
+            )
+        """)
+        self.conn.commit()
 
     def openEmployees(self):
         self.subpageemployee = EmployeePage()

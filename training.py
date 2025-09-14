@@ -93,6 +93,7 @@ class TrainingPage(QWidget):
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS employees (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id TEXT,
             name TEXT,
             job TEXT,
             department TEXT
@@ -280,23 +281,31 @@ class TrainingPage(QWidget):
                 cursor.execute(f"""
                     CREATE TABLE IF NOT EXISTS {table_name} (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        employee_id INTEGER,
+                        employee_id TEXT,
                         employee_name TEXT,
                         department TEXT,
-                        completed INTEGER DEFAULT 0,
+                        status TEXT DEFAULT Pending,
                         FOREIGN KEY (employee_id) REFERENCES employees(id)
                     )
                 """)
 
                 # 3. Add employees from the selected departments into the new table
+                has_employees = False
                 for dept in selected_depts:
-                    cursor.execute("SELECT id, name, department FROM employees WHERE department = ?", (dept,))
+                    cursor.execute("SELECT id, company_id, name, department FROM employees WHERE department = ?", (dept,))
                     employees = cursor.fetchall()
-                    for emp in employees:
-                        cursor.execute(
-                            f"INSERT INTO {table_name} (employee_id, employee_name, department, completed) VALUES (?, ?, ?, ?)",
-                            (emp[0], emp[1], emp[2], 0)
-                        )
+                    if employees:  # Only insert if we actually found employees
+                        has_employees = True
+                        for emp in employees:
+                            cursor.execute(
+                                f"INSERT INTO {table_name} (employee_id, employee_name, department, status) VALUES (?, ?, ?, ?)",
+                                (emp[1], emp[2], emp[3], "Pending")
+                            )
+
+                if has_employees:
+                    print(f"Employees added to training table {table_name}")
+                else:
+                    print(f"No employees found. Created empty training table {table_name}")
 
                 self.conn.commit()
                 self.show_trainings()  # Refresh table
@@ -401,27 +410,28 @@ class TrainingPage(QWidget):
                 cursor.execute(f"""
                     CREATE TABLE IF NOT EXISTS "{table_name}" (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        employee_id INTEGER,
+                        employee_id TEXT,
                         employee_name TEXT,
                         department TEXT,
-                        completed INTEGER DEFAULT 0
+                        status TEXT DEFAULT Pending
                     )
                 """)
 
                 # 5) Add employees for departments listed (avoid duplicates)
                 dept_list = [d.strip() for d in depts.split(",") if d.strip()]
                 for dept in dept_list:
-                    cursor.execute("SELECT id, name, department FROM employees WHERE department = ?", (dept,))
+                    cursor.execute("SELECT company_id, name, department FROM employees WHERE department = ?", (dept,))
                     employees = cursor.fetchall()
-                    for emp in employees:
-                        emp_id, emp_name, emp_dept = emp
-                        # avoid duplicate entry in training table
-                        cursor.execute(f'SELECT 1 FROM "{table_name}" WHERE employee_id=?', (emp_id,))
-                        if not cursor.fetchone():
-                            cursor.execute(
-                                f'INSERT INTO "{table_name}" (employee_id, employee_name, department, completed) VALUES (?, ?, ?, ?)',
-                                (emp_id, emp_name, emp_dept, 0)
-                            )
+                    if employees:
+                        for emp in employees:
+                            emp_id, emp_name, emp_dept = emp
+                            # avoid duplicate entry in training table
+                            cursor.execute(f'SELECT 1 FROM "{table_name}" WHERE employee_id=?', (emp_id,))
+                            if not cursor.fetchone():
+                                cursor.execute(
+                                    f'INSERT INTO "{table_name}" (employee_id, employee_name, department, status) VALUES (?, ?, ?, ?)',
+                                    (emp_id, emp_name, emp_dept, 0)
+                                )
 
             self.conn.commit()
 

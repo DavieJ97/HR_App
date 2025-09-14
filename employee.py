@@ -91,6 +91,7 @@ class EmployeePage(QWidget):
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS employees (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id TEXT,
             name TEXT,
             job TEXT,
             department TEXT
@@ -100,7 +101,8 @@ class EmployeePage(QWidget):
         CREATE TABLE IF NOT EXISTS trainings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT,
-            description TEXT
+            description TEXT,
+            departments TEXT
         )
         """)
         self.conn.commit()
@@ -111,11 +113,11 @@ class EmployeePage(QWidget):
         rows = cursor.fetchall()
 
         self.table.setRowCount(len(rows))
-        self.table.setColumnCount(5)  # Extra column for the button
-        self.table.setHorizontalHeaderLabels(["ID", "Name", "Job", "Department", "Details"])
+        self.table.setColumnCount(6)  # Extra column for the button
+        self.table.setHorizontalHeaderLabels(["ID", "Company ID", "Name", "Job", "Department", "Details"])
 
         for col in range(self.table.columnCount()):
-            self.table.setColumnWidth(col, self.table.columnWidth(col) + 35)
+            self.table.setColumnWidth(col, self.table.columnWidth(col)+25)
 
         # Fill the table
         for i, row in enumerate(rows):
@@ -125,7 +127,7 @@ class EmployeePage(QWidget):
             # Add "..." button in last column
             btn = objects.TableStyledButton("...")
             btn.clicked.connect(lambda checked, emp_id=row[0]: self.show_employee_details(emp_id))
-            self.table.setCellWidget(i, 4, btn)
+            self.table.setCellWidget(i, 5, btn)
 
         # === Add down arrow buttons for headers (except Details) ===
         header = self.table.horizontalHeader()
@@ -139,7 +141,7 @@ class EmployeePage(QWidget):
         self.header_buttons = []
 
         # Create buttons for first 4 headers
-        for col in range(4):
+        for col in range(5):
             btn = QToolButton(self.table)
             btn.setText("▼")
             btn.setAutoRaise(True)
@@ -217,19 +219,25 @@ class EmployeePage(QWidget):
             form_layout.addRow("ID:", QLabel(str(employee[0])))
 
             # Editable fields
-            self.name_label = QLabel(employee[1])
-            self.name_edit = QLineEdit(employee[1])
+            self.company_id_label = QLabel(employee[1])
+            self.company_id_edit = QLineEdit(employee[1])
+            self.company_id_edit.hide()
+            form_layout.addRow("Company ID:", self.company_id_label)
+            form_layout.addRow("", self.company_id_edit)
+
+            self.name_label = QLabel(employee[2])
+            self.name_edit = QLineEdit(employee[2])
             self.name_edit.hide()
             form_layout.addRow("Name:", self.name_label)
             form_layout.addRow("", self.name_edit)
 
-            self.job_label = QLabel(employee[2])
-            self.job_edit = QLineEdit(employee[2])
+            self.job_label = QLabel(employee[3])
+            self.job_edit = QLineEdit(employee[3])
             self.job_edit.hide()
             form_layout.addRow("Job:", self.job_label)
             form_layout.addRow("", self.job_edit)
 
-            self.dept_label = QLabel(employee[3])
+            self.dept_label = QLabel(employee[4])
             self.dept_edit = QComboBox()
             loadDept()
             self.dept_edit.hide()
@@ -252,16 +260,19 @@ class EmployeePage(QWidget):
             # === Button Actions ===
             def toggle_edit():
                 if self.btn_edit.text() == "Edit":
+                    self.company_id_label.hide()
                     self.name_label.hide()
                     self.job_label.hide()
                     self.dept_label.hide()
 
+                    self.company_id_edit.show()
                     self.name_edit.show()
                     self.job_edit.show()
                     self.dept_edit.show()
 
                     self.btn_edit.setText("Save")
                 else:
+                    new_ID = self.company_id_edit.text().strip()
                     new_name = self.name_edit.text().strip()
                     new_job = self.job_edit.text().strip()
                     new_dept = self.dept_edit.currentText().strip()
@@ -269,46 +280,49 @@ class EmployeePage(QWidget):
                     # Update employee record
                     cursor.execute("""
                         UPDATE employees
-                        SET name=?, job=?, department=?
+                        SET company_id=?, name=?, job=?, department=?
                         WHERE id=?
-                    """, (new_name, new_job, new_dept, emp_id))
+                    """, (new_ID, new_name, new_job, new_dept, emp_id))
                     self.conn.commit()
 
                     # === Update related training tables ===
                     cursor.execute("SELECT id, name, departments FROM trainings")
                     trainings = cursor.fetchall()
+                    if trainings:
+                        for t_id, t_name, t_depts in trainings:
+                            # Clean training name so it can be used as a table name
+                            safe_name = "".join(c if c.isalnum() else "_" for c in t_name)
+                            table_name = f"{safe_name}_{t_id}"
 
-                    for t_id, t_name, t_depts in trainings:
-                        # Clean training name so it can be used as a table name
-                        safe_name = "".join(c if c.isalnum() else "_" for c in t_name)
-                        table_name = f"{safe_name}_{t_id}"
-
-                        # If this training applies to the new department
-                        if new_dept in (t_depts or ""):
-                            cursor.execute(f"SELECT 1 FROM {table_name} WHERE employee_id=?", (emp_id,))
-                            if not cursor.fetchone():
+                            # If this training applies to the new department
+                            if new_dept in (t_depts or ""):
+                                cursor.execute(f"SELECT 1 FROM {table_name} WHERE employee_id=?", (emp_id,))
+                                if not cursor.fetchone():
+                                    cursor.execute(
+                                        f"INSERT INTO {table_name} (employee_id, status) VALUES (?, ?)",
+                                        (emp_id, "Not Started")
+                                    )
+                            else:
+                                # Mark as "Not Required" instead of deleting
                                 cursor.execute(
-                                    f"INSERT INTO {table_name} (employee_id, status) VALUES (?, ?)",
-                                    (emp_id, "Not Started")
+                                    f"UPDATE {table_name} SET status=? WHERE employee_id=?",
+                                    ("Not Required", emp_id)
                                 )
-                        else:
-                            # Mark as "Not Required" instead of deleting
-                            cursor.execute(
-                                f"UPDATE {table_name} SET status=? WHERE employee_id=?",
-                                ("Not Required", emp_id)
-                            )
 
                     self.conn.commit()
 
                     # Update UI labels
+                    self.company_id_label.setText(new_ID)
                     self.name_label.setText(new_name)
                     self.job_label.setText(new_job)
                     self.dept_label.setText(new_dept)
 
+                    self.company_id_label.show()
                     self.name_label.show()
                     self.job_label.show()
                     self.dept_label.show()
 
+                    self.company_id_edit.hide()
                     self.name_edit.hide()
                     self.job_edit.hide()
                     self.dept_edit.hide()
@@ -333,15 +347,18 @@ class EmployeePage(QWidget):
                         safe_name = "".join(c if c.isalnum() else "_" for c in t_name)
                         table_name = f"{safe_name}_{t_id}"
 
-                        cursor.execute(f"SELECT status FROM {table_name} WHERE employee_id=?", (emp_id,))
-                        record = cursor.fetchone()
-                        if record:
-                            current_status = record[0]
-                            if current_status != "Completed":
-                                cursor.execute(
-                                    f"UPDATE {table_name} SET status=? WHERE employee_id=?",
-                                    ("Not Required", emp_id)
-                                )
+                        try:
+                            cursor.execute(f"SELECT status FROM \"{table_name}\" WHERE employee_id=?", (emp_id,))
+                            record = cursor.fetchone()
+                            if record:
+                                current_status = record[0]
+                                if current_status != "Completed":
+                                    cursor.execute(
+                                        f"UPDATE \"{table_name}\" SET status=? WHERE employee_id=?",
+                                        ("Not Required", emp_id)
+                                    )
+                        except sqlite3.OperationalError as e:
+                            print(f"Skipping table {table_name}: {e}")
 
                     self.conn.commit()
 
@@ -367,6 +384,7 @@ class EmployeePage(QWidget):
         dialog.main_layout.addLayout(layout)
 
         # Input fields
+        id_input = QLineEdit()
         name_input = QLineEdit()
         job_input = QLineEdit()
         dept_input = QComboBox()
@@ -379,6 +397,7 @@ class EmployeePage(QWidget):
 
         loadDept()
 
+        layout.addRow("Company ID:", id_input)
         layout.addRow("Name:", name_input)
         layout.addRow("Job:", job_input)
         layout.addRow("Department:", dept_input)
@@ -388,40 +407,47 @@ class EmployeePage(QWidget):
         dialog.main_layout.addWidget(buttons)
 
         def save_employee():
+            id = id_input.text().strip()
             name = name_input.text().strip()
             job = job_input.text().strip()
             dept = dept_input.currentText().strip()
 
-            if not name or not job or not dept:
+            if not id or not name or not job or not dept:
                 QMessageBox.warning(dialog, "Error", "All fields must be filled in.")
                 return
 
             cursor = self.conn.cursor()
             cursor.execute(
-                "INSERT INTO employees (name, job, department) VALUES (?, ?, ?)",
-                (name, job, dept)
+                "INSERT INTO employees (company_id, name, job, department) VALUES (?, ?, ?, ?)",
+                (id, name, job, dept)
             )
             self.conn.commit()
 
             # Get the new employee's ID
-            emp_id = cursor.lastrowid
+            emp_id = id
 
             # Find all trainings that include this department
             cursor.execute("SELECT id, name, departments FROM trainings")
+            has_trainings = False
             trainings = cursor.fetchall()
+            if trainings:
+                has_trainings = True
+                for t_id, t_name, t_depts in trainings:
+                    if dept in (t_depts or ""):
+                        # Same sanitisation used for training table name
+                        safe_name = "".join(c if c.isalnum() else "_" for c in t_name)
+                        table_name = f"{safe_name}_{t_id}"
 
-            for t_id, t_name, t_depts in trainings:
-                if dept in (t_depts or ""):
-                    # Same sanitisation used for training table name
-                    safe_name = "".join(c if c.isalnum() else "_" for c in t_name)
-                    table_name = f"{safe_name}_{t_id}"
-
-                    cursor.execute(
-                        f"INSERT INTO {table_name} (employee_id, status) VALUES (?, ?)",
-                        (emp_id, "Not Started")
-                    )
+                        cursor.execute(
+                            f"INSERT INTO {table_name} (employee_id, status) VALUES (?, ?)",
+                            (emp_id, "Not Started")
+                        )
 
             self.conn.commit()
+            if has_trainings:
+                print(f"Employees added to training tables")
+            else:
+                print(f"No trainings found.")
 
             QMessageBox.information(dialog, "Success", "Employee added successfully.")
             dialog.accept()
@@ -452,7 +478,7 @@ class EmployeePage(QWidget):
             return  # User cancelled
 
         try:
-            required = {"name", "job", "department"}
+            required = {"company_id", "name", "job", "department"}
 
             # 1) Preview first 10 rows (no header) to find header row
             preview = pd.read_excel(file_path, header=None, nrows=10)
@@ -467,7 +493,7 @@ class EmployeePage(QWidget):
                 QMessageBox.warning(
                     self,
                     "Invalid File",
-                    "Could not find required header row (Name, Job, Department) in the first 10 rows."
+                    "Could not find required header row (Company_ID, Name, Job, Department) in the first 10 rows."
                 )
                 return
 
@@ -485,6 +511,7 @@ class EmployeePage(QWidget):
                 )
                 return
 
+            company_id_col = col_map["company_id"]
             name_col = col_map["name"]
             job_col = col_map["job"]
             dept_col = col_map["department"]
@@ -495,11 +522,12 @@ class EmployeePage(QWidget):
             # 4) Process each data row
             for _, row in df.iterrows():
                 # Safely read values
+                id = str(row[company_id_col]).strip() if pd.notna(row[company_id_col]) else ""
                 name = str(row[name_col]).strip() if pd.notna(row[name_col]) else ""
                 job = str(row[job_col]).strip() if pd.notna(row[job_col]) else ""
                 dept = str(row[dept_col]).strip() if pd.notna(row[dept_col]) else ""
 
-                if not name or not job or not dept:
+                if not id or not name or not job or not dept:
                     # skip incomplete rows
                     continue
 
@@ -514,8 +542,8 @@ class EmployeePage(QWidget):
 
                 # 6) Check for duplicate employee (same name, job, department)
                 cursor.execute(
-                    "SELECT id FROM employees WHERE name=? AND job=? AND department=?",
-                    (name, job, dept)
+                    "SELECT id FROM employees WHERE company_id=? AND name=? AND job=? AND department=?",
+                    (id, name, job, dept)
                 )
                 existing = cursor.fetchone()
                 if existing:
@@ -523,8 +551,8 @@ class EmployeePage(QWidget):
                 else:
                     # Insert new employee
                     cursor.execute(
-                        "INSERT INTO employees (name, job, department) VALUES (?, ?, ?)",
-                        (name, job, dept)
+                        "INSERT INTO employees (company_id, name, job, department) VALUES (?, ?, ?, ?)",
+                        (id, name, job, dept)
                     )
                     emp_id = cursor.lastrowid
                     added_count += 1
@@ -532,35 +560,36 @@ class EmployeePage(QWidget):
                 # 7) Add / ensure in training tables where this department applies
                 cursor.execute("SELECT id, name, departments FROM trainings")
                 trainings = cursor.fetchall()
-                for t_id, t_name, t_depts in trainings:
-                    # build normalized list of departments for this training
-                    dept_list = []
-                    if t_depts and isinstance(t_depts, str):
-                        dept_list = [d.strip().lower() for d in t_depts.split(",") if d.strip()]
+                if trainings:
+                    for t_id, t_name, t_depts in trainings:
+                        # build normalized list of departments for this training
+                        dept_list = []
+                        if t_depts and isinstance(t_depts, str):
+                            dept_list = [d.strip().lower() for d in t_depts.split(",") if d.strip()]
 
-                    if dept.lower() in dept_list:
-                        # sanitize training name for table name
-                        safe_name = "".join(c if c.isalnum() else "_" for c in t_name)
-                        table_name = f"{safe_name}_{t_id}"
+                        if dept.lower() in dept_list:
+                            # sanitize training name for table name
+                            safe_name = "".join(c if c.isalnum() else "_" for c in t_name)
+                            table_name = f"{safe_name}_{t_id}"
 
-                        # ensure training table exists and has the expected schema
-                        cursor.execute(f"""
-                            CREATE TABLE IF NOT EXISTS "{table_name}" (
-                                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                employee_id INTEGER,
-                                employee_name TEXT,
-                                department TEXT,
-                                completed INTEGER DEFAULT 0
-                            )
-                        """)
+                            # ensure training table exists and has the expected schema
+                            cursor.execute(f"""
+                                CREATE TABLE IF NOT EXISTS "{table_name}" (
+                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    employee_id INTEGER,
+                                    employee_name TEXT,
+                                    department TEXT,
+                                    status TEXT DEFAULT Pending
+                                )
+                            """)
 
-                        # avoid duplicate entry in training table
-                        cursor.execute(f'SELECT 1 FROM "{table_name}" WHERE employee_id=?', (emp_id,))
-                        if not cursor.fetchone():
-                            cursor.execute(
-                                f'INSERT INTO "{table_name}" (employee_id, employee_name, department, completed) VALUES (?, ?, ?, ?)',
-                                (emp_id, name, dept, 0)
-                            )
+                            # avoid duplicate entry in training table
+                            cursor.execute(f'SELECT 1 FROM "{table_name}" WHERE employee_id=?', (id,))
+                            if not cursor.fetchone():
+                                cursor.execute(
+                                    f'INSERT INTO "{table_name}" (employee_id, employee_name, department, status) VALUES (?, ?, ?, ?)',
+                                    (id, name, dept, "Pending")
+                                )
 
             # 8) Commit and show message
             self.conn.commit()
@@ -583,11 +612,11 @@ class EmployeePage(QWidget):
         """Export employees table into a new Excel sheet with timestamp in name."""
         try:
             cursor = self.conn.cursor()
-            cursor.execute("SELECT id, name, job, department FROM employees")
+            cursor.execute("SELECT id, company_id, name, job, department FROM employees")
             rows = cursor.fetchall()
 
             # Convert to DataFrame
-            df = pd.DataFrame(rows, columns=["ID", "Name", "Job", "Department"])
+            df = pd.DataFrame(rows, columns=["ID", "Company_ID", "Name", "Job", "Department"])
 
             # Format timestamp for filename and header
             now = datetime.now()

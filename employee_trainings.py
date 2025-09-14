@@ -29,6 +29,9 @@ class EmployeeTrainingPages(QWidget):
         # Layout
         self.main_layout = QVBoxLayout()
 
+        self.header = objects.HeaderLabel("TableName")
+        self.main_layout.addWidget(self.header)
+
         # === Scroll Area ===
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -53,14 +56,14 @@ class EmployeeTrainingPages(QWidget):
     def show_training_employees(self, training_id, training_name):
         """Show all employees and their status for a given training."""
         cursor = self.conn.cursor()
-        
+        self.header.setText(training_name)
         # Safe table name
         safe_name = "".join(c if c.isalnum() else "_" for c in training_name)
         self.table_name = f"{safe_name}_{training_id}"
 
         # Join training table with employees to get employee names
         cursor.execute(f"""
-            SELECT id, employee_id, employee_name, department, completed
+            SELECT id, employee_id, employee_name, department, status
             FROM "{self.table_name}"
         """)
         rows = cursor.fetchall()
@@ -81,7 +84,7 @@ class EmployeeTrainingPages(QWidget):
             self.table.setItem(i, 1, QTableWidgetItem(str(emp_id)))
             self.table.setItem(i, 2, QTableWidgetItem(name))
             self.table.setItem(i, 3, QTableWidgetItem(dept))
-            self.table.setItem(i, 4, QTableWidgetItem("Completed" if status == 1 else "Pending"))
+            self.table.setItem(i, 4, QTableWidgetItem(status))
 
             # Add action button
             btn = objects.TableStyledButton("Toggle")
@@ -99,7 +102,7 @@ class EmployeeTrainingPages(QWidget):
 
         self.header_buttons = []
 
-        for col in range(6):  # now includes Action column
+        for col in range(5):  # now includes Action column
             btn = QToolButton(self.table)
             btn.setText("▼")
             btn.setAutoRaise(True)
@@ -159,7 +162,7 @@ class EmployeeTrainingPages(QWidget):
 
         try:
             cursor = self.conn.cursor()
-            cursor.execute(f"SELECT id, employee_id, employee_name, department, completed FROM {self.table_name}")
+            cursor.execute(f"SELECT id, employee_id, employee_name, department, status FROM {self.table_name}")
             rows = cursor.fetchall()
 
             if not rows:
@@ -181,12 +184,12 @@ class EmployeeTrainingPages(QWidget):
     def toggle_training_status(self, emp_db_id, row_index):
         """Toggle training status (0=Pending, 1=Completed) for a single employee."""
         cursor = self.conn.cursor()
-        cursor.execute(f"SELECT completed FROM {self.table_name} WHERE id=?", (emp_db_id,))
+        cursor.execute(f"SELECT status FROM {self.table_name} WHERE id=?", (emp_db_id,))
         current_status = cursor.fetchone()[0]
 
-        new_status = 0 if current_status == 1 else 1
-        cursor.execute(f"UPDATE {self.table_name} SET completed=? WHERE id=?", (new_status, emp_db_id))
+        new_status = "Pending"if current_status == "Completed" else "Completed"
+        cursor.execute(f"UPDATE {self.table_name} SET status=? WHERE id=?", (new_status, emp_db_id))
         self.conn.commit()
 
         # Update UI immediately
-        self.table.setItem(row_index, 4, QTableWidgetItem("Completed" if new_status == 1 else "Pending"))
+        self.table.setItem(row_index, 4, QTableWidgetItem(new_status))
