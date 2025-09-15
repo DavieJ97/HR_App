@@ -21,13 +21,21 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
+def db_path(relative_path):
+    appdata_path = os.path.join(os.environ["APPDATA"], "HR_App")
+    os.makedirs(appdata_path, exist_ok=True)
+
+    # Always use this path for the database
+    db_path = os.path.join(appdata_path, relative_path)
+    return db_path
+
 class HRApp(QWidget):  
     def __init__(self):
         super().__init__()
         self.setWindowTitle("HR Training App")
         self.setGeometry(100, 100, 300, 300)  # Bigger, dashboard feel
 
-        self.conn = sqlite3.connect(resource_path("hr_app.db"))
+        self.conn = sqlite3.connect(db_path("hr_app.db"))
         self.cursor = self.conn.cursor()
         self.init_db()  # create tables here
 

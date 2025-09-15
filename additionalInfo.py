@@ -17,6 +17,14 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
+def db_path(relative_path):
+    appdata_path = os.path.join(os.environ["APPDATA"], "HR_App")
+    os.makedirs(appdata_path, exist_ok=True)
+
+    # Always use this path for the database
+    db_path = os.path.join(appdata_path, relative_path)
+    return db_path
+
 # Password dialog
 class PasswordDialog(objects.StyledDialog):
     def __init__(self, parent=None):
@@ -74,7 +82,7 @@ class ChangePasswordDialog(objects.StyledDialog):
 class InfoPage(QWidget):
     def __init__(self):
         super().__init__()
-        self.conn = sqlite3.connect(resource_path("hr_app.db"))
+        self.conn = sqlite3.connect(db_path("hr_app.db"))
         self.cursor = self.conn.cursor()
         self.password = "admin123"  # fallback in case no password in DB
         self.setStyleSheet(f"""
