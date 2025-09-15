@@ -1,4 +1,6 @@
+import sys
 import sqlite3
+import os
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton,
     QTableWidget, QTableWidgetItem, QHBoxLayout, QLineEdit, QLabel, QMessageBox, QDialog, QFormLayout,
@@ -10,6 +12,15 @@ from employee_trainings import EmployeeTrainingPages
 import pandas as pd
 from datetime import datetime
 import objects
+
+def resource_path(relative_path):
+    """Get absolute path to resource, works for PyInstaller."""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 class TrainingPage(QWidget):
     def __init__(self):
@@ -26,7 +37,7 @@ class TrainingPage(QWidget):
         """)
 
         # Database setup
-        self.conn = sqlite3.connect("hr_app.db")
+        self.conn = sqlite3.connect(resource_path("hr_app.db"))
         self.create_tables()
 
         # Layout
@@ -38,19 +49,19 @@ class TrainingPage(QWidget):
         btn_layout = QHBoxLayout(btn_frame)
         btn_layout.setSpacing(15)
         self.btn_trainings = objects.StyledButton("Refresh Trainings")
-        self.btn_trainings.setIcon(QIcon("icons/refresh.png"))
+        self.btn_trainings.setIcon(QIcon(resource_path("icons/refresh.png")))
         self.btn_trainings.setIconSize(QSize(32, 32))
         self.btn_trainings.clicked.connect(self.show_trainings)
         btn_layout.addWidget(self.btn_trainings)
 
         self.import_trainings = objects.StyledButton("Upload Trainings")
-        self.import_trainings.setIcon(QIcon("icons/upload.png"))
+        self.import_trainings.setIcon(QIcon(resource_path("icons/upload.png")))
         self.import_trainings.setIconSize(QSize(32, 32))
         self.import_trainings.clicked.connect(self.import_trainings_from_excel)
         btn_layout.addWidget(self.import_trainings)
 
         self.export_trainings = objects.StyledButton("Download Trainings")
-        self.export_trainings.setIcon(QIcon("icons/download.png"))
+        self.export_trainings.setIcon(QIcon(resource_path("icons/download.png")))
         self.export_trainings.setIconSize(QSize(32, 32))
         self.export_trainings.clicked.connect(self.export_trainings_to_excel)
         btn_layout.addWidget(self.export_trainings)
@@ -73,7 +84,7 @@ class TrainingPage(QWidget):
 
        # Floating Add Button
         self.btn_add = objects.FloatingButton("")
-        self.btn_add.setIcon(QIcon("icons/new.png"))
+        self.btn_add.setIcon(QIcon(resource_path("icons/new.png")))
         self.btn_add.setIconSize(QSize(32, 32))
         self.btn_add.clicked.connect(self.add_item_placeholder)  # empty for now
 

@@ -1,4 +1,6 @@
+import sys
 import sqlite3
+import os
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton, QTableWidgetItem, QHBoxLayout, QLineEdit, QLabel, QMessageBox, QDialog, QFormLayout,
     QScrollArea, QDialogButtonBox, QComboBox, QToolButton, QMenu, QInputDialog, QFileDialog
@@ -8,6 +10,16 @@ from PyQt6.QtCore import Qt, QSize
 import pandas as pd
 from datetime import datetime
 import objects
+
+def resource_path(relative_path):
+    """Get absolute path to resource, works for PyInstaller."""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
 
 class EmployeePage(QWidget):
     def __init__(self):
@@ -24,7 +36,7 @@ class EmployeePage(QWidget):
         """)
 
         # Database setup
-        self.conn = sqlite3.connect("hr_app.db")
+        self.conn = sqlite3.connect(resource_path("hr_app.db"))
         self.create_tables()
 
         # Layout
@@ -36,19 +48,19 @@ class EmployeePage(QWidget):
         btn_layout = QHBoxLayout(btn_frame)
         btn_layout.setSpacing(15)
         self.btn_employees = objects.StyledButton("Refresh Employees")
-        self.btn_employees.setIcon(QIcon("icons/refresh.png"))
+        self.btn_employees.setIcon(QIcon(resource_path("icons/refresh.png")))
         self.btn_employees.setIconSize(QSize(32, 32))
         self.btn_employees.clicked.connect(self.show_employees)
         btn_layout.addWidget(self.btn_employees)
 
         self.import_btn = objects.StyledButton("Upload Employees")
-        self.import_btn.setIcon(QIcon("icons/upload.png"))
+        self.import_btn.setIcon(QIcon(resource_path("icons/upload.png")))
         self.import_btn.setIconSize(QSize(32, 32))
         self.import_btn.clicked.connect(self.import_employees_from_excel)
         btn_layout.addWidget(self.import_btn)
 
         self.export_btn = objects.StyledButton("Download Employees")
-        self.export_btn.setIcon(QIcon("icons/download.png"))
+        self.export_btn.setIcon(QIcon(resource_path("icons/download.png")))
         self.export_btn.setIconSize(QSize(32, 32))
         self.export_btn.clicked.connect(self.export_employees_to_excel)
         btn_layout.addWidget(self.export_btn)
@@ -72,7 +84,7 @@ class EmployeePage(QWidget):
 
        # Floating Add Button
         self.btn_add = objects.FloatingButton("")
-        self.btn_add.setIcon(QIcon("icons/user.png"))
+        self.btn_add.setIcon(QIcon(resource_path("icons/user.png")))
         self.btn_add.setIconSize(QSize(32, 32))
         self.btn_add.clicked.connect(self.add_item_placeholder)  # empty for now
 
@@ -439,8 +451,8 @@ class EmployeePage(QWidget):
                         table_name = f"{safe_name}_{t_id}"
 
                         cursor.execute(
-                            f"INSERT INTO {table_name} (employee_id, status) VALUES (?, ?)",
-                            (emp_id, "Not Started")
+                            f"INSERT INTO {table_name} (employee_id, employee_name, department, status) VALUES (?, ?, ?, ?)",
+                            (emp_id, name, dept, "Pending")
                         )
 
             self.conn.commit()

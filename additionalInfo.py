@@ -1,10 +1,21 @@
+import sys
 import sqlite3
+import os
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton,
     QScrollArea, QLineEdit, QFormLayout, QMessageBox, QDialog, QDialogButtonBox, QListWidget, QInputDialog
 )
 from PyQt6.QtCore import Qt
 import objects
+
+def resource_path(relative_path):
+    """Get absolute path to resource, works for PyInstaller."""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 # Password dialog
 class PasswordDialog(objects.StyledDialog):
@@ -63,7 +74,7 @@ class ChangePasswordDialog(objects.StyledDialog):
 class InfoPage(QWidget):
     def __init__(self):
         super().__init__()
-        self.conn = sqlite3.connect("hr_app.db")
+        self.conn = sqlite3.connect(resource_path("hr_app.db"))
         self.cursor = self.conn.cursor()
         self.password = "admin123"  # fallback in case no password in DB
         self.setStyleSheet(f"""

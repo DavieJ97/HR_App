@@ -1,4 +1,6 @@
+import sys
 import sqlite3
+import os
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton,
     QTableWidget, QTableWidgetItem, QMessageBox, QScrollArea, QToolButton, QMenu, QInputDialog, QFileDialog
@@ -8,6 +10,15 @@ from PyQt6.QtGui import QIcon
 import pandas as pd
 from datetime import datetime
 import objects
+
+def resource_path(relative_path):
+    """Get absolute path to resource, works for PyInstaller."""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 class EmployeeTrainingPages(QWidget):
     def __init__(self):
@@ -24,7 +35,7 @@ class EmployeeTrainingPages(QWidget):
         """)
 
         # Database setup
-        self.conn = sqlite3.connect("hr_app.db")
+        self.conn = sqlite3.connect(resource_path("hr_app.db"))
 
         # Layout
         self.main_layout = QVBoxLayout()
@@ -47,7 +58,7 @@ class EmployeeTrainingPages(QWidget):
         self.main_layout.addWidget(scroll_area)
 
         self.export_btn = objects.FloatingButton("")
-        self.export_btn.setIcon(QIcon("icons/download.png"))  # system icon fallback
+        self.export_btn.setIcon(QIcon(resource_path("icons/download.png")))  # system icon fallback
         self.export_btn.setIconSize(QSize(32, 32))
         self.export_btn.clicked.connect(self.export_training_employees_to_excel)
         self.main_layout.addWidget(self.export_btn, alignment=Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignRight)

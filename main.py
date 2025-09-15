@@ -1,8 +1,9 @@
 # Main page with buttons.
 import sys
 import sqlite3
+import os
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QFrame, QHBoxLayout
+    QApplication, QWidget, QVBoxLayout, QFrame, QHBoxLayout, QMessageBox
 )
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt, QSize
@@ -11,6 +12,14 @@ from training import TrainingPage
 from additionalInfo import InfoPage
 import objects
 
+def resource_path(relative_path):
+    """Get absolute path to resource, works for PyInstaller."""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 class HRApp(QWidget):  
     def __init__(self):
@@ -18,7 +27,7 @@ class HRApp(QWidget):
         self.setWindowTitle("HR Training App")
         self.setGeometry(100, 100, 300, 300)  # Bigger, dashboard feel
 
-        self.conn = sqlite3.connect("hr_app.db")
+        self.conn = sqlite3.connect(resource_path("hr_app.db"))
         self.cursor = self.conn.cursor()
         self.init_db()  # create tables here
 
@@ -48,15 +57,15 @@ class HRApp(QWidget):
 
         # Buttons
         btn_employee = objects.StyledButton("Employee")
-        btn_employee.setIcon(QIcon("icons/employee.png"))   # 👤 user icon
+        btn_employee.setIcon(QIcon(resource_path("icons/employee.png")))   # 👤 user icon
         btn_employee.setIconSize(QSize(32, 32))
                                  
         btn_training = objects.StyledButton("Training")
-        btn_training.setIcon(QIcon("icons/training.png"))   # 🎓 training cap
+        btn_training.setIcon(QIcon(resource_path("icons/training.png")))   # 🎓 training cap
         btn_training.setIconSize(QSize(32, 32))
 
         btn_info = objects.StyledButton("Info")
-        btn_info.setIcon(QIcon("icons/info.png"))           # ℹ️ info circle
+        btn_info.setIcon(QIcon(resource_path("icons/info.png")))           # ℹ️ info circle
         btn_info.setIconSize(QSize(32, 32))
 
         # Optional styling for buttons
@@ -126,19 +135,28 @@ class HRApp(QWidget):
         self.conn.commit()
 
     def openEmployees(self):
-        self.subpageemployee = EmployeePage()
-        self.subpageemployee.showMaximized()
-        self.subpageemployee.show()
+        try:
+            self.subpageemployee = EmployeePage()
+            self.subpageemployee.showMaximized()
+            self.subpageemployee.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Loading", f"Failed to load employees:\n{e}")
 
     def openTrainings(self):
-        self.subpagetraining = TrainingPage()
-        self.subpagetraining.showMaximized()
-        self.subpagetraining.show()
+        try:
+            self.subpagetraining = TrainingPage()
+            self.subpagetraining.showMaximized()
+            self.subpagetraining.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Loading", f"Failed to load trainings:\n{e}")
 
     def openInfo(self):
-        self.subpageinfo = InfoPage()
-        self.subpageinfo.showMaximized()
-        self.subpageinfo.show()
+        try:
+            self.subpageinfo = InfoPage()
+            self.subpageinfo.showMaximized()
+            self.subpageinfo.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Loading", f"Failed to load info:\n{e}")
 
 
 if __name__ == "__main__":
