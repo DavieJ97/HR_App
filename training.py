@@ -204,7 +204,6 @@ class TrainingPage(QWidget):
             btn_layout.addWidget(self.btn_cancel)
             dialog.main_layout.addLayout(btn_layout)
 
-            # === Button Actions ===
             def toggle_edit():
                 if self.btn_edit.text() == "Edit":
                     self.desc_label.hide()
@@ -216,11 +215,73 @@ class TrainingPage(QWidget):
                     new_desc = self.desc_edit.toPlainText()
                     selected_depts = [chk.text() for chk in dept_checks if chk.isChecked()]
                     dept_string = ", ".join(selected_depts)
+
+                    # --- Get old departments before updating ---
+                    cursor.execute("SELECT departments FROM trainings WHERE id=?", (training_id,))
+                    row = cursor.fetchone()
+                    old_dept_string = row[0] if row and row[0] else ""
+                    old_depts = [d.strip() for d in old_dept_string.split(",") if d.strip()]
+
+                    # --- Update the training record ---
                     cursor.execute(
                         "UPDATE trainings SET description=?, departments=? WHERE id=?",
                         (new_desc, dept_string, training_id)
                     )
                     self.conn.commit()
+
+                    # --- Work out department changes ---
+                    added_depts = set(d.strip() for d in selected_depts) - set(old_depts)
+                    removed_depts = set(old_depts) - set(d.strip() for d in selected_depts)
+
+                    # --- Build safe table name for this training ---
+                    orig_name = training[1]  # training name from earlier fetch
+                    safe_name = "".join(c if c.isalnum() else "_" for c in orig_name).strip("_")
+                    if not safe_name:
+                        safe_name = f"training_{training_id}"
+                    # Wrap in double quotes so SQLite accepts names with underscores/numbers
+                    table_name = f'"{safe_name}_{training_id}"'
+
+                    # --- Ensure per-training table exists (schema uses employees.id as FK) ---
+                    cursor.execute(f"""
+                        CREATE TABLE IF NOT EXISTS {table_name} (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            employee_id INTEGER,
+                            employee_name TEXT,
+                            department TEXT,
+                            status TEXT DEFAULT 'Pending',
+                            FOREIGN KEY (employee_id) REFERENCES employees(id)
+                        )
+                    """)
+                    self.conn.commit()
+
+                    # --- Handle added departments: add employees to this training table ---
+                    for dept in added_depts:
+                        cursor.execute("SELECT company_id, name, department FROM employees WHERE department=?", (dept,))
+                        employees = cursor.fetchall()
+                        for emp_id, emp_name, emp_dept in employees:
+                            # avoid duplicates by checking employee_id existance in this training table
+                            cursor.execute(f'SELECT 1 FROM {table_name} WHERE employee_id=?', (emp_id,))
+                            if not cursor.fetchone():
+                                cursor.execute(
+                                    f'INSERT INTO {table_name} (employee_id, employee_name, department, status) VALUES (?, ?, ?, ?)',
+                                    (emp_id, emp_name, emp_dept, "Pending")
+                                )
+
+                    print(removed_depts)
+                    # --- Handle removed departments: mark Not Needed if not Completed ---
+                    for dept in removed_depts:
+                        cursor.execute("SELECT company_id FROM employees WHERE department=?", (dept,))
+                        employees = cursor.fetchall()
+                        for emp_id, in employees:
+                            cursor.execute(
+                                f"UPDATE {table_name} SET status=? WHERE employee_id=? AND status!='Completed'",
+                                ("Not Needed", emp_id)
+                            )
+                            print(f"Changed {emp_id}")
+
+                    self.conn.commit()
+
+                    # --- Refresh UI ---
                     self.show_trainings()
                     self.desc_label.setText(new_desc)
                     self.desc_label.show()
@@ -229,6 +290,8 @@ class TrainingPage(QWidget):
                     self.dept_label.show()
                     self.dept_box.hide()
                     self.btn_edit.setText("Edit")
+
+
 
             def delete_training():
                 confirm = QMessageBox.question(dialog, "Confirm Delete",
@@ -449,7 +512,7 @@ class TrainingPage(QWidget):
                             if not cursor.fetchone():
                                 cursor.execute(
                                     f'INSERT INTO "{table_name}" (employee_id, employee_name, department, status) VALUES (?, ?, ?, ?)',
-                                    (emp_id, emp_name, emp_dept, 0)
+                                    (emp_id, emp_name, emp_dept, "Pending")
                                 )
 
             self.conn.commit()
