@@ -29,7 +29,7 @@ def db_path(relative_path):
     db_path = os.path.join(appdata_path, relative_path)
     return db_path
 
-def handle_department(conn, dept):
+def handle_department(conn, dept, parent = None):
     # Check if department exists
     department = datafetching.run_query(
         conn,
@@ -57,7 +57,7 @@ def handle_department(conn, dept):
                 (dept,),
                 commit=True
             )
-            QMessageBox.information(None, "Success", f"Department '{dept}' added.")
+            QMessageBox.information(parent, "Success", f"Department '{dept}' added.")
             return dept
         else:
             # Show list of existing departments for selection
@@ -562,9 +562,14 @@ class EmployeePage(QWidget):
                     continue
 
                 # 5) Ensure department exists in departments table (create if missing)
-                dept = handle_department(self.conn, dept)
-                if not dept:
-                    return  # user cancelled or closed the dialog
+                dept_map = {} 
+                if dept in dept_map:
+                    dept = dept_map[dept]  # reuse previous choice
+                else:
+                    dept = handle_department(self.conn, dept, self)
+                    if not dept:
+                        return  # user cancelled
+                    dept_map[dept] = dept
                 
                 # 6) Check for duplicate employee (same name, job, department)
                 existing = datafetching.run_query(self.conn, "SELECT id FROM employees WHERE company_id=? AND name=? AND job=? AND department=?", (id, name, job, dept), fetchone=True)
@@ -588,7 +593,11 @@ class EmployeePage(QWidget):
                             table_name = f"{safe_name}_{t_id}"
 
                             # ensure training table exists and has the expected schema
-                            datafetching.createtables(self.conn, table_name)
+                            try:
+                                datafetching.createtables(self.conn, table_name)
+                            except sqlite3.Error as e:
+                                QMessageBox.critical(self, "Database Error", f"Could not create training table:\n{e}")
+                                return
 
                             # avoid duplicate entry in training table
                             excist = datafetching.run_query(self.conn, f'SELECT 1 FROM "{table_name}" WHERE employee_id=?', (id,), True)

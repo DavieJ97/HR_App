@@ -13,6 +13,27 @@ import pandas as pd
 from datetime import datetime
 import objects
 import datafetching
+import re
+
+BANNED_CHARS = r'[;"\'\\/]'
+
+def sanitize_training_name(raw_name):
+    """
+    Returns a safe version of the training name for use in table names.
+    Raises ValueError if raw_name contains banned characters.
+    """
+    if re.search(BANNED_CHARS, raw_name):
+        raise ValueError(
+            f"Training name '{raw_name}' contains invalid characters.\n"
+            "Please remove ; \" ' \\ / and try again."
+        )
+
+    # Replace spaces and other non-alphanumeric characters with underscores
+    safe_name = "".join(c if c.isalnum() else "_" for c in raw_name)
+    # Avoid empty table names
+    if not safe_name:
+        safe_name = "training"
+    return safe_name
 
 def resource_path(relative_path):
     """Get absolute path to resource, works for PyInstaller."""
@@ -270,7 +291,11 @@ class TrainingPage(QWidget):
                     table_name = f'"{safe_name}_{training_id}"'
 
                     # --- Ensure per-training table exists (schema uses employees.id as FK) ---
-                    datafetching.createtables(self.conn, table_name)
+                    try:
+                        datafetching.createtables(self.conn, table_name)
+                    except sqlite3.Error as e:
+                        QMessageBox.critical(self, "Database Error", f"Could not create training table:\n{e}")
+                        return
 
                     # --- Handle added departments: add employees to this training table ---
                     for dept in added_depts:
@@ -349,6 +374,10 @@ class TrainingPage(QWidget):
             desc = desc_input.toPlainText().strip()
             selected_depts = [chk.text() for chk in dept_checks if chk.isChecked()]
             dept_string = ", ".join(selected_depts)
+            try:
+                name = sanitize_training_name(name)
+            except ValueError as e:
+                QMessageBox.warning(self, "Invalid Training Name", str(e)) 
 
             if name:
                 # 1. Save the training to the trainings table
@@ -356,7 +385,11 @@ class TrainingPage(QWidget):
                 table_name = f"{name}_{training_id}"
 
                 # 2. Create a new table for this training
-                datafetching.createtables(self.conn, table_name)
+                try:
+                    datafetching.createtables(self.conn, table_name)
+                except sqlite3.Error as e:
+                    QMessageBox.critical(self, "Database Error", f"Could not create training table:\n{e}")
+                    return
 
                 # 3. Add employees from the selected departments into the new table
                 has_employees = False
@@ -445,8 +478,15 @@ class TrainingPage(QWidget):
                 raw_name = str(row[name_col]).strip() if pd.notna(row[name_col]) else ""
                 if not raw_name:
                     continue
+
+                try:
+                    safe_name = sanitize_training_name(raw_name)
+                except ValueError as e:
+                    QMessageBox.warning(self, "Invalid Training Name", str(e))
+                    continue  # skip this row or ask user to correct
+
                 # keep stored name consistent with previous code: replace spaces with underscore
-                stored_name = raw_name.replace(" ", "_")
+                stored_name = safe_name.replace(" ", "_")
                 desc = str(row[desc_col]).strip() if pd.notna(row[desc_col]) else ""
                 depts = str(row[depts_col]).strip() if pd.notna(row[depts_col]) else ""
 
@@ -468,14 +508,24 @@ class TrainingPage(QWidget):
                 # 4) Create/ensure training table exists (use safe name)
                 safe_name = "".join(c if c.isalnum() else "_" for c in stored_name)
                 table_name = f"{safe_name}_{training_id}"
-                datafetching.createtables(self.conn, table_name)
+                try:
+                    datafetching.createtables(self.conn, table_name)
+                except sqlite3.Error as e:
+                    QMessageBox.critical(self, "Database Error", f"Could not create training table:\n{e}")
+                    return
 
                 # 5) Add employees for departments listed (avoid duplicates)
                 dept_list = [d.strip() for d in depts.split(",") if d.strip()]
                 clean_dept_list = []
+                dept_map = {} 
                 for dept in dept_list:
-                    dept = handle_department(self.conn, dept, self)
-                    if dept:  # only append if valid
+                    if dept in dept_map:
+                        dept = dept_map[dept]  # reuse previous choice
+                    else:
+                        dept = handle_department(self.conn, dept, self)
+                        if not dept:
+                            return  # user cancelled
+                        dept_map[dept] = dept
                         clean_dept_list.append(dept)
                     employees = datafetching.run_query(self.conn, "SELECT company_id, name, department FROM employees WHERE department = ?", (dept,))
                     if employees:
