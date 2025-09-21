@@ -2,14 +2,14 @@ import sys
 import sqlite3
 import os
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QPushButton,
-    QTableWidget, QTableWidgetItem, QMessageBox, QScrollArea, QToolButton, QMenu, QInputDialog, QFileDialog
+    QWidget, QVBoxLayout, QTableWidgetItem, QMessageBox, QScrollArea, QToolButton, QMenu, QInputDialog, QFileDialog
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QIcon
 import pandas as pd
 from datetime import datetime
 import objects
+import datafetching
 
 def resource_path(relative_path):
     """Get absolute path to resource, works for PyInstaller."""
@@ -74,18 +74,16 @@ class EmployeeTrainingPages(QWidget):
 
     def show_training_employees(self, training_id, training_name):
         """Show all employees and their status for a given training."""
-        cursor = self.conn.cursor()
         self.header.setText(training_name)
         # Safe table name
         safe_name = "".join(c if c.isalnum() else "_" for c in training_name)
         self.table_name = f"{safe_name}_{training_id}"
 
         # Join training table with employees to get employee names
-        cursor.execute(f"""
+        rows = datafetching.run_query(self.conn, f"""
             SELECT id, employee_id, employee_name, department, status
             FROM "{self.table_name}"
-        """)
-        rows = cursor.fetchall()
+        """ )
 
         # Add an extra column for the button
         self.table.setRowCount(len(rows))
@@ -180,9 +178,7 @@ class EmployeeTrainingPages(QWidget):
             return
 
         try:
-            cursor = self.conn.cursor()
-            cursor.execute(f"SELECT id, employee_id, employee_name, department, status FROM {self.table_name}")
-            rows = cursor.fetchall()
+            rows = datafetching.run_query(self.conn, f"SELECT id, employee_id, employee_name, department, status FROM {self.table_name}")
 
             if not rows:
                 QMessageBox.information(self, "No Data", "There are no Employees doing this training.")
@@ -202,13 +198,11 @@ class EmployeeTrainingPages(QWidget):
 
     def toggle_training_status(self, emp_db_id, row_index):
         """Toggle training status (0=Pending, 1=Completed) for a single employee."""
-        cursor = self.conn.cursor()
-        cursor.execute(f"SELECT status FROM {self.table_name} WHERE id=?", (emp_db_id,))
-        current_status = cursor.fetchone()[0]
+        status = datafetching.run_query(self.conn, f"SELECT status FROM {self.table_name} WHERE id=?", (emp_db_id,), fetchone=True)
+        current_status = status[0]
 
         new_status = "Pending"if current_status == "Completed" else "Completed"
-        cursor.execute(f"UPDATE {self.table_name} SET status=? WHERE id=?", (new_status, emp_db_id))
-        self.conn.commit()
+        datafetching.run_query(self.conn, f"UPDATE {self.table_name} SET status=? WHERE id=?", (new_status, emp_db_id), commit=True)
 
         # Update UI immediately
         self.table.setItem(row_index, 4, QTableWidgetItem(new_status))

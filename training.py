@@ -3,8 +3,8 @@ import sqlite3
 import os
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton,
-    QTableWidget, QTableWidgetItem, QHBoxLayout, QLineEdit, QLabel, QMessageBox, QDialog, QFormLayout,
-    QScrollArea, QDialogButtonBox, QTextEdit, QCheckBox, QFileDialog
+    QTableWidget, QTableWidgetItem, QHBoxLayout, QLineEdit, QLabel, QMessageBox, QFormLayout,
+    QScrollArea, QDialogButtonBox, QTextEdit, QCheckBox, QFileDialog, QInputDialog
 )
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt, QSize
@@ -12,6 +12,7 @@ from employee_trainings import EmployeeTrainingPages
 import pandas as pd
 from datetime import datetime
 import objects
+import datafetching
 
 def resource_path(relative_path):
     """Get absolute path to resource, works for PyInstaller."""
@@ -29,6 +30,60 @@ def db_path(relative_path):
     # Always use this path for the database
     db_path = os.path.join(appdata_path, relative_path)
     return db_path
+
+def handle_department(conn, dept, parent = None):
+    # Check if department exists
+    department = datafetching.run_query(
+        conn,
+        "SELECT name FROM departments WHERE name=?",
+        (dept,),
+        fetchone=True
+    )
+
+    if not department:
+        # Ask user if they want to add new dept
+        msg = QMessageBox()
+        msg.setWindowTitle("Department Missing")
+        msg.setText(f"Department '{dept}' was not found.")
+        msg.setInformativeText("Do you want to add it as a new department?")
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg.setDefaultButton(QMessageBox.StandardButton.No)
+
+        response = msg.exec()
+
+        if response == QMessageBox.StandardButton.Yes:
+            # Insert new department
+            try:
+                datafetching.run_query(
+                    conn,
+                    "INSERT INTO departments (name) VALUES (?)",
+                    (dept,),
+                    commit=True
+                )
+            except sqlite3.IntegrityError:
+                pass
+            QMessageBox.information(parent, "Success", f"Department '{dept}' added.")
+            return dept
+        else:
+            # Show list of existing departments for selection
+            all_departments = datafetching.run_query(conn, "SELECT name FROM departments")
+            dept_names = [d[0] for d in all_departments]
+
+            selected, ok = QInputDialog.getItem(
+                None,
+                "Select Department",
+                "Choose from existing departments:",
+                dept_names,
+                0,
+                False
+            )
+
+            if ok and selected:
+                return selected
+            else:
+                return None  # user cancelled
+    else:
+        return dept
 
 class TrainingPage(QWidget):
     def __init__(self):
@@ -108,31 +163,11 @@ class TrainingPage(QWidget):
 
 
     def create_tables(self):
-        cursor = self.conn.cursor()
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS employees (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            company_id TEXT,
-            name TEXT,
-            job TEXT,
-            department TEXT
-        )
-        """)
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS trainings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            description TEXT,
-            departments TEXT
-        )
-        """)
-        self.conn.commit()
+        datafetching.createtables(self.conn)
 
 
     def show_trainings(self):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM trainings")
-        rows = cursor.fetchall()
+        rows = datafetching.run_query(self.conn, "SELECT * FROM trainings")
 
         self.table.setRowCount(len(rows))
         self.table.setColumnCount(6)  # Extra column for button
@@ -153,9 +188,7 @@ class TrainingPage(QWidget):
 
     def show_training_details(self, training_id):
         """Open a dialog showing details of one training with edit/delete options."""
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM trainings WHERE id=?", (training_id,))
-        training = cursor.fetchone()
+        training = datafetching.run_query(self.conn, "SELECT * FROM trainings WHERE id=?", (training_id,), True)
 
         if training:
             dialog = objects.StyledDialog(self, "Training Details")
@@ -178,10 +211,10 @@ class TrainingPage(QWidget):
             self.dept_box = QWidget()
             dept_layout = QVBoxLayout(self.dept_box)
 
-            cursor.execute("SELECT name FROM departments ORDER BY name")
+            departments = datafetching.run_query(self.conn, "SELECT name FROM departments ORDER BY name")
             dept_checks = []
             existing_depts = (training[3] or "").split(", ")
-            for row in cursor.fetchall():
+            for row in departments:
                 chk = QCheckBox(row[0])
                 if row[0] in existing_depts:
                     chk.setChecked(True)
@@ -217,17 +250,12 @@ class TrainingPage(QWidget):
                     dept_string = ", ".join(selected_depts)
 
                     # --- Get old departments before updating ---
-                    cursor.execute("SELECT departments FROM trainings WHERE id=?", (training_id,))
-                    row = cursor.fetchone()
+                    row = datafetching.run_query(self.conn, "SELECT departments FROM trainings WHERE id=?", (training_id,), fetchone=True)
                     old_dept_string = row[0] if row and row[0] else ""
                     old_depts = [d.strip() for d in old_dept_string.split(",") if d.strip()]
 
                     # --- Update the training record ---
-                    cursor.execute(
-                        "UPDATE trainings SET description=?, departments=? WHERE id=?",
-                        (new_desc, dept_string, training_id)
-                    )
-                    self.conn.commit()
+                    datafetching.run_query(self.conn, "UPDATE trainings SET description=?, departments=? WHERE id=?", (new_desc, dept_string, training_id), commit=True)
 
                     # --- Work out department changes ---
                     added_depts = set(d.strip() for d in selected_depts) - set(old_depts)
@@ -242,44 +270,22 @@ class TrainingPage(QWidget):
                     table_name = f'"{safe_name}_{training_id}"'
 
                     # --- Ensure per-training table exists (schema uses employees.id as FK) ---
-                    cursor.execute(f"""
-                        CREATE TABLE IF NOT EXISTS {table_name} (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            employee_id INTEGER,
-                            employee_name TEXT,
-                            department TEXT,
-                            status TEXT DEFAULT 'Pending',
-                            FOREIGN KEY (employee_id) REFERENCES employees(id)
-                        )
-                    """)
-                    self.conn.commit()
+                    datafetching.createtables(self.conn, table_name)
 
                     # --- Handle added departments: add employees to this training table ---
                     for dept in added_depts:
-                        cursor.execute("SELECT company_id, name, department FROM employees WHERE department=?", (dept,))
-                        employees = cursor.fetchall()
+                        employees = datafetching.run_query(self.conn, "SELECT company_id, name, department FROM employees WHERE department=?", (dept,))
                         for emp_id, emp_name, emp_dept in employees:
                             # avoid duplicates by checking employee_id existance in this training table
-                            cursor.execute(f'SELECT 1 FROM {table_name} WHERE employee_id=?', (emp_id,))
-                            if not cursor.fetchone():
-                                cursor.execute(
-                                    f'INSERT INTO {table_name} (employee_id, employee_name, department, status) VALUES (?, ?, ?, ?)',
-                                    (emp_id, emp_name, emp_dept, "Pending")
-                                )
+                            eXist = datafetching.run_query(self.conn, f'SELECT 1 FROM {table_name} WHERE employee_id=?', (emp_id,), fetchone=True)
+                            if not eXist:
+                                datafetching.run_query(self.conn, f'INSERT INTO {table_name} (employee_id, employee_name, department, status) VALUES (?, ?, ?, ?)', (emp_id, emp_name, emp_dept, "Pending"), commit=True)
 
-                    print(removed_depts)
-                    # --- Handle removed departments: mark Not Needed if not Completed ---
+                    # --- Handle removed departments: mark Not Needed if not Completed --- 
                     for dept in removed_depts:
-                        cursor.execute("SELECT company_id FROM employees WHERE department=?", (dept,))
-                        employees = cursor.fetchall()
+                        employees = datafetching.run_query(self.conn, "SELECT company_id FROM employees WHERE department=?", (dept,))
                         for emp_id, in employees:
-                            cursor.execute(
-                                f"UPDATE {table_name} SET status=? WHERE employee_id=? AND status!='Completed'",
-                                ("Not Needed", emp_id)
-                            )
-                            print(f"Changed {emp_id}")
-
-                    self.conn.commit()
+                            datafetching.run_query(self.conn, f"UPDATE {table_name} SET status=? WHERE employee_id=? AND status!='Completed'", ("Not Needed", emp_id), commit=True)
 
                     # --- Refresh UI ---
                     self.show_trainings()
@@ -298,8 +304,7 @@ class TrainingPage(QWidget):
                                                "Are you sure you want to delete this training?",
                                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
                 if confirm == QMessageBox.StandardButton.Yes:
-                    cursor.execute("DELETE FROM trainings WHERE id=?", (training_id,))
-                    self.conn.commit()
+                    datafetching.run_query(self.conn, "DELETE FROM trainings WHERE id=?", (training_id,), commit=True)
                     self.show_trainings()
                     dialog.accept()  # close dialog
 
@@ -325,10 +330,9 @@ class TrainingPage(QWidget):
         dept_box = QWidget()
         dept_layout = QVBoxLayout(dept_box)
 
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT name FROM departments ORDER BY name")
+        rows = datafetching.run_query(self.conn, "SELECT name FROM departments ORDER BY name")
         dept_checks = []
-        for row in cursor.fetchall():
+        for row in rows:
             chk = QCheckBox(row[0])
             dept_layout.addWidget(chk)
             dept_checks.append(chk)
@@ -347,49 +351,30 @@ class TrainingPage(QWidget):
             dept_string = ", ".join(selected_depts)
 
             if name:
-                cursor = self.conn.cursor()
                 # 1. Save the training to the trainings table
-                cursor.execute(
-                    "INSERT INTO trainings (name, description, departments) VALUES (?, ?, ?)",
-                    (name, desc, dept_string)
-                )
-                self.conn.commit()
-
-                # Get the new training's ID
-                training_id = cursor.lastrowid
+                training_id = datafetching.run_query(self.conn, "INSERT INTO trainings (name, description, departments) VALUES (?, ?, ?)", (name, desc, dept_string), commit=True, return_id=True)
                 table_name = f"{name}_{training_id}"
 
                 # 2. Create a new table for this training
-                cursor.execute(f"""
-                    CREATE TABLE IF NOT EXISTS {table_name} (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        employee_id TEXT,
-                        employee_name TEXT,
-                        department TEXT,
-                        status TEXT DEFAULT Pending,
-                        FOREIGN KEY (employee_id) REFERENCES employees(id)
-                    )
-                """)
+                datafetching.createtables(self.conn, table_name)
 
                 # 3. Add employees from the selected departments into the new table
                 has_employees = False
                 for dept in selected_depts:
-                    cursor.execute("SELECT id, company_id, name, department FROM employees WHERE department = ?", (dept,))
-                    employees = cursor.fetchall()
+                    employees = datafetching.run_query(self.conn, "SELECT id, company_id, name, department FROM employees WHERE department = ?", (dept,))
                     if employees:  # Only insert if we actually found employees
                         has_employees = True
                         for emp in employees:
-                            cursor.execute(
-                                f"INSERT INTO {table_name} (employee_id, employee_name, department, status) VALUES (?, ?, ?, ?)",
-                                (emp[1], emp[2], emp[3], "Pending")
-                            )
+                            datafetching.run_query(self.conn, f"INSERT INTO {table_name} (employee_id, employee_name, department, status) VALUES (?, ?, ?, ?)",
+                                (emp[1], emp[2], emp[3], "Pending"), 
+                                commit=True
+                                )
 
                 if has_employees:
                     print(f"Employees added to training table {table_name}")
                 else:
                     print(f"No employees found. Created empty training table {table_name}")
 
-                self.conn.commit()
                 self.show_trainings()  # Refresh table
 
     def openEmployeeTrainings(self, training_id, training_name):
@@ -453,7 +438,6 @@ class TrainingPage(QWidget):
             desc_col = col_map["description"]
             depts_col = col_map["departments"]
 
-            cursor = self.conn.cursor()
             added_count = 0
             updated_count = 0
 
@@ -470,53 +454,49 @@ class TrainingPage(QWidget):
                     continue  # skip incomplete rows
 
                 # 3) Check for existing training by name (case-insensitive)
-                cursor.execute("SELECT id, name, description, departments FROM trainings WHERE LOWER(name)=?", (stored_name.lower(),))
-                existing = cursor.fetchone()
+                existing = datafetching.run_query(self.conn, "SELECT id, name, description, departments FROM trainings WHERE LOWER(name)=?", (stored_name.lower(),), fetchone=True)
                 if existing:
                     training_id = existing[0]
                     # update description/departments if changed
-                    cursor.execute("UPDATE trainings SET description=?, departments=? WHERE id=?", (desc, depts, training_id))
+                    datafetching.run_query(self.conn, "UPDATE trainings SET description=?, departments=? WHERE id=?", (desc, depts, training_id), commit=True)
                     updated_count += 1
                 else:
                     # insert new training
-                    cursor.execute(
-                        "INSERT INTO trainings (name, description, departments) VALUES (?, ?, ?)",
-                        (stored_name, desc, depts)
-                    )
-                    training_id = cursor.lastrowid
+                    training_id = datafetching.run_query(self.conn, "INSERT INTO trainings (name, description, departments) VALUES (?, ?, ?)", (stored_name, desc, depts), commit=True, return_id=True)
                     added_count += 1
 
                 # 4) Create/ensure training table exists (use safe name)
                 safe_name = "".join(c if c.isalnum() else "_" for c in stored_name)
                 table_name = f"{safe_name}_{training_id}"
-                cursor.execute(f"""
-                    CREATE TABLE IF NOT EXISTS "{table_name}" (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        employee_id TEXT,
-                        employee_name TEXT,
-                        department TEXT,
-                        status TEXT DEFAULT Pending
-                    )
-                """)
+                datafetching.createtables(self.conn, table_name)
 
                 # 5) Add employees for departments listed (avoid duplicates)
                 dept_list = [d.strip() for d in depts.split(",") if d.strip()]
+                clean_dept_list = []
                 for dept in dept_list:
-                    cursor.execute("SELECT company_id, name, department FROM employees WHERE department = ?", (dept,))
-                    employees = cursor.fetchall()
+                    dept = handle_department(self.conn, dept, self)
+                    if dept:  # only append if valid
+                        clean_dept_list.append(dept)
+                    employees = datafetching.run_query(self.conn, "SELECT company_id, name, department FROM employees WHERE department = ?", (dept,))
                     if employees:
                         for emp in employees:
                             emp_id, emp_name, emp_dept = emp
                             # avoid duplicate entry in training table
-                            cursor.execute(f'SELECT 1 FROM "{table_name}" WHERE employee_id=?', (emp_id,))
-                            if not cursor.fetchone():
-                                cursor.execute(
+                            exist = datafetching.run_query(self.conn, f'SELECT 1 FROM "{table_name}" WHERE employee_id=?', (emp_id,), fetchone=True)
+                            if not exist:
+                                datafetching.run_query(
+                                    self.conn, 
                                     f'INSERT INTO "{table_name}" (employee_id, employee_name, department, status) VALUES (?, ?, ?, ?)',
-                                    (emp_id, emp_name, emp_dept, "Pending")
-                                )
-
-            self.conn.commit()
-
+                                    (emp_id, emp_name, emp_dept, "Pending"),
+                                    commit=True
+                                    )
+                dept_string = ", ".join(clean_dept_list)
+                datafetching.run_query(
+                    self.conn,
+                    "UPDATE trainings SET description=?, departments=? WHERE id=?",
+                    (desc, dept_string, training_id),
+                    commit=True
+                )
             QMessageBox.information(
                 self,
                 "Import Complete",
@@ -542,10 +522,7 @@ class TrainingPage(QWidget):
             return
 
         try:
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT id, name, description, departments FROM trainings")
-            rows = cursor.fetchall()
-
+            rows = datafetching.run_query(self.conn, "SELECT id, name, description, departments FROM trainings")
 
             df = pd.DataFrame(rows, columns=["ID", "Name", "Description", "Departments"])
 

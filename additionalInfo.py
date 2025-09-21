@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 import objects
+import datafetching
 
 def resource_path(relative_path):
     """Get absolute path to resource, works for PyInstaller."""
@@ -126,15 +127,12 @@ class InfoPage(QWidget):
         self.initUI()
 
     def load_password_from_db(self):
-        self.cursor.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
-        self.conn.commit()
-        self.cursor.execute("SELECT value FROM settings WHERE key='password'")
-        row = self.cursor.fetchone()
+        datafetching.createtables(self.conn)
+        row = datafetching.run_query(self.conn, "SELECT value FROM settings WHERE key='password'", fetchone=True)
         if row:
             self.password = row[0]
         else:
-            self.cursor.execute("INSERT INTO settings (key, value) VALUES ('password', ?)", (self.password,))
-            self.conn.commit()
+            datafetching.run_query(self.conn, "INSERT INTO settings (key, value) VALUES ('password', ?)", (self.password,), commit=True)
 
     def initUI(self):
         layout = QVBoxLayout()
@@ -186,31 +184,18 @@ class InfoPage(QWidget):
         self.company_type.setReadOnly(not editable)
 
     def load_info(self):
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS company_info (
-                id INTEGER PRIMARY KEY,
-                name TEXT,
-                type TEXT
-            )
-        """)
-        self.conn.commit()
-
-        self.cursor.execute("SELECT name, type FROM company_info WHERE id=1")
-        row = self.cursor.fetchone()
+        datafetching.createtables(self.conn)
+        row = datafetching.run_query(self.conn, "SELECT name, type FROM company_info WHERE id=1", fetchone=True)
         departments = self.load_dept_info()
         if row:
             self.company_name.setText(row[0])
             self.company_type.setText(row[1])
             self.departments.setText(departments)
         else:
-            self.cursor.execute(
-                "INSERT INTO company_info (id, name, type) VALUES (1, '', '')"
-            )
-            self.conn.commit()
+            datafetching.run_query(self.conn, "INSERT INTO company_info (id, name, type) VALUES (1, '', '')", commit=True)
 
     def load_dept_info(self):
-        self.cursor.execute("SELECT name FROM departments ORDER BY name")
-        rows = self.cursor.fetchall()
+        rows = datafetching.run_query(self.conn, "SELECT name FROM departments ORDER BY name")
         # Extract names and join with commas
         dept_list = [row[0] for row in rows]
         return ", ".join(dept_list)
@@ -234,11 +219,7 @@ class InfoPage(QWidget):
     def save_info(self):
         name = self.company_name.text()
         ctype = self.company_type.text()
-
-        self.cursor.execute("""
-            UPDATE company_info SET name=?, type=? WHERE id=1
-        """, (name, ctype))
-        self.conn.commit()
+        datafetching.run_query(self.conn, "UPDATE company_info SET name=?, type=? WHERE id=1", (name, ctype), commit=True)
 
         self.set_fields_editable(False)
         self.edit_button.setText("Edit")
@@ -261,8 +242,7 @@ class InfoPage(QWidget):
             new_pass1, new_pass2 = dialog.getPasswords()
             if new_pass1 and new_pass2 and new_pass1 == new_pass2:
                 self.password = new_pass1
-                self.cursor.execute("UPDATE settings SET value=? WHERE key='password'", (new_pass1,))
-                self.conn.commit()
+                datafetching.run_query(self.conn, "UPDATE settings SET value=? WHERE key='password'", (new_pass1,), commit=True)
                 QMessageBox.information(self, "Success", "Password updated.")
             else:
                 QMessageBox.warning(self, "Error", "Passwords do not match.")
@@ -278,8 +258,7 @@ class InfoPage(QWidget):
 
             try:
                 # Insert into departments table
-                self.cursor.execute("INSERT INTO departments (name) VALUES (?)", (new_dept,))
-                self.conn.commit()
+                datafetching.run_query(self.conn, "INSERT INTO departments (name) VALUES (?)", (new_dept,), commit=True)
             except sqlite3.IntegrityError:
                 QMessageBox.warning(self, "Error", f"Department '{new_dept}' already exists.")
                 return

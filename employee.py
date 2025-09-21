@@ -10,6 +10,7 @@ from PyQt6.QtCore import Qt, QSize
 import pandas as pd
 from datetime import datetime
 import objects
+import datafetching
 
 def resource_path(relative_path):
     """Get absolute path to resource, works for PyInstaller."""
@@ -28,6 +29,56 @@ def db_path(relative_path):
     db_path = os.path.join(appdata_path, relative_path)
     return db_path
 
+def handle_department(conn, dept):
+    # Check if department exists
+    department = datafetching.run_query(
+        conn,
+        "SELECT name FROM departments WHERE name=?",
+        (dept,),
+        fetchone=True
+    )
+
+    if not department:
+        # Ask user if they want to add new dept
+        msg = QMessageBox()
+        msg.setWindowTitle("Department Missing")
+        msg.setText(f"Department '{dept}' was not found.")
+        msg.setInformativeText("Do you want to add it as a new department?")
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg.setDefaultButton(QMessageBox.StandardButton.No)
+
+        response = msg.exec()
+
+        if response == QMessageBox.StandardButton.Yes:
+            # Insert new department
+            datafetching.run_query(
+                conn,
+                "INSERT INTO departments (name) VALUES (?)",
+                (dept,),
+                commit=True
+            )
+            QMessageBox.information(None, "Success", f"Department '{dept}' added.")
+            return dept
+        else:
+            # Show list of existing departments for selection
+            all_departments = datafetching.run_query(conn, "SELECT name FROM departments")
+            dept_names = [d[0] for d in all_departments]
+
+            selected, ok = QInputDialog.getItem(
+                None,
+                "Select Department",
+                "Choose from existing departments:",
+                dept_names,
+                0,
+                False
+            )
+
+            if ok and selected:
+                return selected
+            else:
+                return None  # user cancelled
+    else:
+        return dept
 
 class EmployeePage(QWidget):
     def __init__(self):
@@ -107,30 +158,10 @@ class EmployeePage(QWidget):
 
 
     def create_tables(self):
-        cursor = self.conn.cursor()
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS employees (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            company_id TEXT,
-            name TEXT,
-            job TEXT,
-            department TEXT
-        )
-        """)
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS trainings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            description TEXT,
-            departments TEXT
-        )
-        """)
-        self.conn.commit()
+        datafetching.createtables(self.conn) 
 
     def show_employees(self):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM employees")
-        rows = cursor.fetchall()
+        rows = datafetching.run_query(self.conn, "SELECT * FROM employees")
 
         self.table.setRowCount(len(rows))
         self.table.setColumnCount(6)  # Extra column for the button
@@ -217,9 +248,7 @@ class EmployeePage(QWidget):
 
     def show_employee_details(self, emp_id):
         """Open a dialog showing details of one employee with edit/delete options."""
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM employees WHERE id=?", (emp_id,))
-        employee = cursor.fetchone()
+        employee = datafetching.run_query(self.conn, "SELECT * FROM employees WHERE id=?", (emp_id,), fetchone=True)
 
         def loadDept():
                 cursor = self.conn.cursor()
@@ -298,16 +327,19 @@ class EmployeePage(QWidget):
                     new_dept = self.dept_edit.currentText().strip()
 
                     # Update employee record
-                    cursor.execute("""
+                    datafetching.run_query(
+                        self.conn,
+                        """
                         UPDATE employees
                         SET company_id=?, name=?, job=?, department=?
                         WHERE id=?
-                    """, (new_ID, new_name, new_job, new_dept, emp_id))
-                    self.conn.commit()
+                        """,
+                        (new_ID, new_name, new_job, new_dept, emp_id),
+                        commit=True
+                    )
 
                     # === Update related training tables ===
-                    cursor.execute("SELECT id, name, departments FROM trainings")
-                    trainings = cursor.fetchall()
+                    trainings = datafetching.run_query(self.conn, "SELECT id, name, departments FROM trainings")
                     if trainings:
                         for t_id, t_name, t_depts in trainings:
                             # Clean training name so it can be used as a table name
@@ -315,21 +347,13 @@ class EmployeePage(QWidget):
                             table_name = f"{safe_name}_{t_id}"
 
                             # If this training applies to the new department
-                            if new_dept in (t_depts or ""):
-                                cursor.execute(f"SELECT 1 FROM {table_name} WHERE employee_id=?", (emp_id,))
-                                if not cursor.fetchone():
-                                    cursor.execute(
-                                        f"INSERT INTO {table_name} (employee_id, status) VALUES (?, ?)",
-                                        (emp_id, "Not Started")
-                                    )
+                            if new_dept in t_depts.split(","):
+                                exists = datafetching.run_query(self.conn, f"SELECT 1 FROM {table_name} WHERE employee_id=?", (emp_id,), fetchone=True)
+                                if not exists:
+                                    datafetching.run_query(self.conn, f"INSERT INTO {table_name} (employee_id, status) VALUES (?, ?)", params=(emp_id, "Not Started"), commit=True)
                             else:
                                 # Mark as "Not Required" instead of deleting
-                                cursor.execute(
-                                    f"UPDATE {table_name} SET status=? WHERE employee_id=?",
-                                    ("Not Required", emp_id)
-                                )
-
-                    self.conn.commit()
+                                datafetching.run_query(self.conn, f"UPDATE {table_name} SET status=? WHERE employee_id=?", ("Not Required", emp_id), commit=True)
 
                     # Update UI labels
                     self.company_id_label.setText(new_ID)
@@ -360,31 +384,24 @@ class EmployeePage(QWidget):
                 )
                 if confirm == QMessageBox.StandardButton.Yes:
                     # Check all training tables first
-                    cursor.execute("SELECT id, name FROM trainings")
-                    trainings = cursor.fetchall()
+                    trainings = datafetching.run_query(self.conn, "SELECT id, name FROM trainings")
 
                     for t_id, t_name in trainings:
                         safe_name = "".join(c if c.isalnum() else "_" for c in t_name)
                         table_name = f"{safe_name}_{t_id}"
 
                         try:
-                            cursor.execute(f"SELECT status FROM \"{table_name}\" WHERE employee_id=?", (emp_id,))
-                            record = cursor.fetchone()
+                            record = datafetching.run_query(self.conn, f"SELECT status FROM \"{table_name}\" WHERE employee_id=?", (emp_id,), True)
                             if record:
                                 current_status = record[0]
                                 if current_status != "Completed":
-                                    cursor.execute(
-                                        f"UPDATE \"{table_name}\" SET status=? WHERE employee_id=?",
-                                        ("Not Required", emp_id)
-                                    )
+                                    datafetching.run_query(self.conn, f"UPDATE \"{table_name}\" SET status=? WHERE employee_id=?", ("Not Required", emp_id), commit=True)
                         except sqlite3.OperationalError as e:
                             print(f"Skipping table {table_name}: {e}")
 
-                    self.conn.commit()
 
                     # Now delete the employee
-                    cursor.execute("DELETE FROM employees WHERE id=?", (emp_id,))
-                    self.conn.commit()
+                    datafetching.run_query(self.conn, "DELETE FROM employees WHERE id=?", (emp_id,), commit=True)
 
                     self.show_employees()
                     dialog.accept()  # close dialog
@@ -410,9 +427,8 @@ class EmployeePage(QWidget):
         dept_input = QComboBox()
 
         def loadDept():
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT name FROM departments ORDER BY name")
-            for row in cursor.fetchall():
+            departments = datafetching.run_query(self.conn, "SELECT name FROM departments ORDER BY name")
+            for row in departments:
                 dept_input.addItem(row[0])
 
         loadDept()
@@ -436,20 +452,14 @@ class EmployeePage(QWidget):
                 QMessageBox.warning(dialog, "Error", "All fields must be filled in.")
                 return
 
-            cursor = self.conn.cursor()
-            cursor.execute(
-                "INSERT INTO employees (company_id, name, job, department) VALUES (?, ?, ?, ?)",
-                (id, name, job, dept)
-            )
-            self.conn.commit()
+            datafetching.run_query(self.conn, "INSERT INTO employees (company_id, name, job, department) VALUES (?, ?, ?, ?)", (id, name, job, dept), commit=True)
 
             # Get the new employee's ID
             emp_id = id
 
             # Find all trainings that include this department
-            cursor.execute("SELECT id, name, departments FROM trainings")
             has_trainings = False
-            trainings = cursor.fetchall()
+            trainings = datafetching.run_query(self.conn, "SELECT id, name, departments FROM trainings")
             if trainings:
                 has_trainings = True
                 for t_id, t_name, t_depts in trainings:
@@ -458,12 +468,13 @@ class EmployeePage(QWidget):
                         safe_name = "".join(c if c.isalnum() else "_" for c in t_name)
                         table_name = f"{safe_name}_{t_id}"
 
-                        cursor.execute(
-                            f"INSERT INTO {table_name} (employee_id, employee_name, department, status) VALUES (?, ?, ?, ?)",
-                            (emp_id, name, dept, "Pending")
-                        )
+                        datafetching.run_query(
+                            self.conn, 
+                            f"INSERT INTO {table_name} (employee_id, employee_name, department, status) VALUES (?, ?, ?, ?)", 
+                            (emp_id, name, dept, "Pending"),
+                            commit=True
+                            )
 
-            self.conn.commit()
             if has_trainings:
                 print(f"Employees added to training tables")
             else:
@@ -536,7 +547,6 @@ class EmployeePage(QWidget):
             job_col = col_map["job"]
             dept_col = col_map["department"]
 
-            cursor = self.conn.cursor()
             added_count = 0
 
             # 4) Process each data row
@@ -552,34 +562,19 @@ class EmployeePage(QWidget):
                     continue
 
                 # 5) Ensure department exists in departments table (create if missing)
-                cursor.execute("SELECT name FROM departments WHERE name=?", (dept,))
-                if not cursor.fetchone():
-                    try:
-                        cursor.execute("INSERT INTO departments (name) VALUES (?)", (dept,))
-                    except sqlite3.IntegrityError:
-                        # concurrent insert or race — ignore
-                        pass
-
+                dept = handle_department(self.conn, dept)
+                if not dept:
+                    return  # user cancelled or closed the dialog
+                
                 # 6) Check for duplicate employee (same name, job, department)
-                cursor.execute(
-                    "SELECT id FROM employees WHERE company_id=? AND name=? AND job=? AND department=?",
-                    (id, name, job, dept)
-                )
-                existing = cursor.fetchone()
-                if existing:
-                    emp_id = existing[0]
-                else:
+                existing = datafetching.run_query(self.conn, "SELECT id FROM employees WHERE company_id=? AND name=? AND job=? AND department=?", (id, name, job, dept), fetchone=True)
+                if not existing:
                     # Insert new employee
-                    cursor.execute(
-                        "INSERT INTO employees (company_id, name, job, department) VALUES (?, ?, ?, ?)",
-                        (id, name, job, dept)
-                    )
-                    emp_id = cursor.lastrowid
+                    datafetching.run_query(self.conn, "INSERT INTO employees (company_id, name, job, department) VALUES (?, ?, ?, ?)", (id, name, job, dept), commit=True)
                     added_count += 1
 
                 # 7) Add / ensure in training tables where this department applies
-                cursor.execute("SELECT id, name, departments FROM trainings")
-                trainings = cursor.fetchall()
+                trainings = datafetching.run_query(self.conn, "SELECT id, name, departments FROM trainings")
                 if trainings:
                     for t_id, t_name, t_depts in trainings:
                         # build normalized list of departments for this training
@@ -593,26 +588,14 @@ class EmployeePage(QWidget):
                             table_name = f"{safe_name}_{t_id}"
 
                             # ensure training table exists and has the expected schema
-                            cursor.execute(f"""
-                                CREATE TABLE IF NOT EXISTS "{table_name}" (
-                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                    employee_id INTEGER,
-                                    employee_name TEXT,
-                                    department TEXT,
-                                    status TEXT DEFAULT Pending
-                                )
-                            """)
+                            datafetching.createtables(self.conn, table_name)
 
                             # avoid duplicate entry in training table
-                            cursor.execute(f'SELECT 1 FROM "{table_name}" WHERE employee_id=?', (id,))
-                            if not cursor.fetchone():
-                                cursor.execute(
-                                    f'INSERT INTO "{table_name}" (employee_id, employee_name, department, status) VALUES (?, ?, ?, ?)',
-                                    (id, name, dept, "Pending")
-                                )
+                            excist = datafetching.run_query(self.conn, f'SELECT 1 FROM "{table_name}" WHERE employee_id=?', (id,), True)
+                            if not excist:
+                                datafetching.run_query(self.conn, f'INSERT INTO "{table_name}" (employee_id, employee_name, department, status) VALUES (?, ?, ?, ?)', commit=True)
 
             # 8) Commit and show message
-            self.conn.commit()
             QMessageBox.information(
                 self,
                 "Import Successful",
@@ -631,9 +614,7 @@ class EmployeePage(QWidget):
     def export_employees_to_excel(self):
         """Export employees table into a new Excel sheet with timestamp in name."""
         try:
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT id, company_id, name, job, department FROM employees")
-            rows = cursor.fetchall()
+            rows = datafetching.run_query(self.conn, "SELECT id, company_id, name, job, department FROM employees")
 
             # Convert to DataFrame
             df = pd.DataFrame(rows, columns=["ID", "Company_ID", "Name", "Job", "Department"])

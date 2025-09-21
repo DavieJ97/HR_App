@@ -3,13 +3,14 @@ import sys
 import sqlite3
 import os
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QFrame, QHBoxLayout, QMessageBox
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QMessageBox
 )
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt, QSize
 from employee import EmployeePage
 from training import TrainingPage
 from additionalInfo import InfoPage
+import datafetching
 import objects
 
 def resource_path(relative_path):
@@ -36,7 +37,6 @@ class HRApp(QWidget):
         self.setGeometry(100, 100, 300, 300)  # Bigger, dashboard feel
 
         self.conn = sqlite3.connect(db_path("hr_app.db"))
-        self.cursor = self.conn.cursor()
         self.init_db()  # create tables here
 
 
@@ -76,28 +76,12 @@ class HRApp(QWidget):
         btn_info.setIcon(QIcon(resource_path("icons/info.png")))           # ℹ️ info circle
         btn_info.setIconSize(QSize(32, 32))
 
-        # Optional styling for buttons
-        button_style = """
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                font-size: 18px;
-                padding: 12px;
-                border-radius: 10px;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-        """
         # btn_employee.setStyleSheet(button_style)
         btn_employee.clicked.connect(self.openEmployees)
         # btn_training.setStyleSheet(button_style)
         btn_training.clicked.connect(self.openTrainings)
         # btn_info.setStyleSheet(button_style)
         btn_info.clicked.connect(self.openInfo)
-
-        # for btn in (btn_employee, btn_training, btn_info):
-        #     btn.setStyleSheet(button_style)
 
         # Add to card
         card_layout.addWidget(btn_employee)
@@ -117,30 +101,7 @@ class HRApp(QWidget):
         self.setLayout(outer_layout)
 
     def init_db(self):
-        """Create all required tables if they don't exist."""
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS company_info (
-                id INTEGER PRIMARY KEY,
-                name TEXT,
-                type TEXT
-            )
-        """)
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS departments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE
-            )
-        """)
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS employees (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                company_id TEXT,
-                name TEXT,
-                job TEXT,
-                department TEXT
-            )
-        """)
-        self.conn.commit()
+       datafetching.createtables(self.conn)
 
     def openEmployees(self):
         try:
